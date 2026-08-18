@@ -4,7 +4,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.ViewGroup
-import android.webkit.ProxyController
+import androidx.webkit.ProxyController
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
@@ -74,7 +74,10 @@ class BrowserActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= 26) {
             ProxyController.getInstance().setProxyOverride(
                 Executors.newSingleThreadExecutor(),
-                listOf("PROXY ${V2RayManager.localProxyAddress()}"),
+                mapOf(
+                    "http" to V2RayManager.localProxyAddress(),
+                    "https" to V2RayManager.localProxyAddress()
+                ),
                 emptyList(),
                 { },
                 { }

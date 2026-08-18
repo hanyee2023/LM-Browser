@@ -15,6 +15,7 @@ import com.proxybrowser.app.data.NodeParser
 import com.proxybrowser.app.data.NodeStore
 import com.proxybrowser.app.data.ProxyNode
 import com.proxybrowser.app.databinding.ActivityNodesBinding
+import com.proxybrowser.app.R
 import java.net.URL
 
 /**
