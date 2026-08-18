@@ -153,10 +153,6 @@ class ProxyingClient(
             return null
         }
         return try {
-            req.requestBody?.let { body ->
-                conn.doOutput = true
-                body.use { out -> conn.outputStream.use { out.copyTo(it) } }
-            }
             val code = conn.responseCode
             val stream: InputStream = try {
                 conn.inputStream
@@ -167,7 +163,26 @@ class ProxyingClient(
             val charset = runCatching {
                 mime.substringAfter("charset=", "").ifBlank { "utf-8" }
             }.getOrDefault("utf-8")
-            WebResourceResponse(mime.substringBefore(";"), charset, code, stream)
+            // WebResourceResponse 没有 4 参版本，必须用 5 参：
+            // (mimeType, encoding, statusCode, reasonPhrase, responseHeaders, data)
+            val reason = conn.responseMessage ?: ""
+            // 拿响应头失败也不能让整个 fetch 挂掉
+            val headers: Map<String, List<String>> = try {
+                conn.headerFields ?: emptyMap()
+            } catch (_: Exception) { emptyMap() }
+            // headerFields 的 key 可能为 null（HTTP/0.9），过滤掉；同时 value 是 List<String>，合并成单 String
+            val safeHeaders: MutableMap<String, String> = headers
+                .mapNotNull { (k, v) -> if (k == null) null else k to v.joinToString(", ") }
+                .toMap()
+                .toMutableMap()
+            WebResourceResponse(
+                mime.substringBefore(";"),
+                charset,
+                code,
+                reason,
+                safeHeaders,
+                stream
+            )
         } catch (e: Exception) {
             android.util.Log.w(tag, "fetch error: $urlStr  err=${e.message}")
             try { conn.errorStream?.close() } catch (_: Exception) {}
