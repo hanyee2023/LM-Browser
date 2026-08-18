@@ -25,7 +25,6 @@ class BrowserActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        V2RayManager.init(this)
 
         val active = NodeStore.getActive(this)
         if (active == null) {
@@ -57,8 +56,10 @@ class BrowserActivity : AppCompatActivity() {
         }
         setContentView(root)
 
-        V2RayManager.connect(active)
-        applyProxy()
+        // 启动 xray，并把代理指向本 WebView（系统全局代理不动，只动 ProxyController）
+        if (V2RayManager.start(this, active)) {
+            applyProxy()
+        }
         go("https://www.google.com")
     }
 
@@ -73,7 +74,7 @@ class BrowserActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= 26) {
             ProxyController.getInstance().setProxyOverride(
                 Executors.newSingleThreadExecutor(),
-                listOf("PROXY ${V2RayManager.localProxyAddress}"),
+                listOf("PROXY ${V2RayManager.localProxyAddress()}"),
                 emptyList(),
                 { },
                 { }
@@ -83,6 +84,7 @@ class BrowserActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         webView.destroy()
+        V2RayManager.stop()
         super.onDestroy()
     }
 }

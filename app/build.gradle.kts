@@ -41,8 +41,5 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.recyclerview:recyclerview:1.3.2") // 节点列表
 
-    // xray-core 的 Android 绑定（内嵌代理内核）。
-    // 版本/构件以 libv2ray 仓库发布为准；若 jitpack 编译失败，
-    // 改用其 GitHub Releases 的预编译 AAR（下载放 app/libs/ 并 implementation(files("libs/...aar"))）。
-    implementation("com.github.2dust:libv2ray:1.8.5")
+    // 不再依赖 libv2ray。xray-core 二进制由 GitHub Actions 在编译时下载并打包到 assets/xray/xray。
 }

@@ -6,23 +6,36 @@ import org.json.JSONObject
 
 /**
  * 把 ProxyNode 转成 xray-core 配置 JSON。
- * 入站：本地 HTTP 代理 127.0.0.1:10809（供 WebView 通过 ProxyController 走）。
+ *
+ * 入站：
+ *   - HTTP  127.0.0.1:10809  →  给 WebView 走 ProxyController 用
+ *   - SOCKS 127.0.0.1:10808  →  给节点测速用（做 SOCKS5 CONNECT 握手）
+ *
  * 出站：按节点类型生成 vless/vmess/trojan outbound + streamSettings。
  */
 object XrayConfig {
 
-    fun build(node: ProxyNode, localPort: Int = 10809): String {
-        val inbound = JSONObject().apply {
-            put("tag", "proxy")
-            put("port", localPort)
+    fun build(node: ProxyNode, httpPort: Int = 10809, socksPort: Int = 10808): String {
+        val httpInbound = JSONObject().apply {
+            put("tag", "http-in")
+            put("port", httpPort)
             put("listen", "127.0.0.1")
             put("protocol", "http")
             put("settings", JSONObject())
         }
+        val socksInbound = JSONObject().apply {
+            put("tag", "socks-in")
+            put("port", socksPort)
+            put("listen", "127.0.0.1")
+            put("protocol", "socks")
+            put("settings", JSONObject().apply {
+                put("udp", false)
+            })
+        }
 
         val root = JSONObject().apply {
             put("log", JSONObject().put("loglevel", "warning"))
-            put("inbounds", JSONArray().put(inbound))
+            put("inbounds", JSONArray().put(httpInbound).put(socksInbound))
             put("outbounds", JSONArray().put(buildOutbound(node)))
             put("routing", JSONObject().put("domainStrategy", "AsIs"))
         }

@@ -51,7 +51,8 @@ class NodesActivity : AppCompatActivity() {
             .setTitle("添加节点")
             .setView(et)
             .setPositiveButton("添加") { _, _ ->
-                val n = NodeParser.parseSingle(et.text.toString().trim())
+                val raw = et.text.toString().trim()
+                val n = if (raw.startsWith("http")) null else NodeParser.parseSingle(raw)
                 if (n == null) {
                     Toast.makeText(this, "无法解析该节点", Toast.LENGTH_SHORT).show()
                 } else {
@@ -74,7 +75,6 @@ class NodesActivity : AppCompatActivity() {
                 if (raw.isEmpty()) return@setPositiveButton
                 Thread {
                     try {
-                        // http(s) 订阅先抓取内容；sub:// / 裸 base64 直接解析
                         val content = if (raw.startsWith("http")) URL(raw).readText() else raw
                         val parsed = NodeParser.parse(content)
                         runOnUiThread {
@@ -101,21 +101,25 @@ class NodesActivity : AppCompatActivity() {
     private fun testAll() {
         if (nodes.isEmpty()) return
         Toast.makeText(this, "测速中…", Toast.LENGTH_SHORT).show()
-        Thread {
-            nodes.forEachIndexed { i, n ->
-                val d = V2RayManager.measure(n)
-                n.latencyMs = d
-                n.valid = d >= 0
-                runOnUiThread { adapter.notifyItemChanged(i) }
+        val pending = nodes.size
+        var done = 0
+        nodes.forEachIndexed { i, n ->
+            V2RayManager.measure(this, n) { d ->
+                n.latencyMs = d ?: -1L
+                n.valid = d != null
+                adapter.notifyItemChanged(i)
+                done++
+                if (done == pending) {
+                    NodeStore.save(this, nodes)
+                    Toast.makeText(this, "测速完成", Toast.LENGTH_SHORT).show()
+                }
             }
-            NodeStore.save(this, nodes)
-            runOnUiThread { Toast.makeText(this, "测速完成", Toast.LENGTH_SHORT).show() }
-        }.start()
+        }
     }
 
     private fun useNode(n: ProxyNode) {
         NodeStore.setActive(this, n)
-        V2RayManager.connect(n)
+        V2RayManager.start(this, n)
         startActivity(Intent(this, BrowserActivity::class.java))
     }
 
