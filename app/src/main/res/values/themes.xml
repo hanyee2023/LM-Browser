@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- 父 style 占位（让 Btn.Ghost / Text.Body / Card.Surface 等点号隐式继承合法，AAPT 严格模式要求父存在） -->
+    <style name="Btn" />
+    <style name="Card" />
+    <style name="Text" />
+
     <!-- VIA 风格：白底浅灰主色 + 单色蓝强调。无 ActionBar，顶部用 Toolbar 控件手画 -->
     <style name="Theme.ProxyBrowser" parent="Theme.MaterialComponents.Light.NoActionBar">
         <item name="colorPrimary">@color/accent</item>
