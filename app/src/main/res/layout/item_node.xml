@@ -1,45 +1,80 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:orientation="horizontal"
-    android:padding="12dp"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content">
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="?android:attr/selectableItemBackground"
+    android:paddingHorizontal="16dp"
+    android:paddingVertical="12dp">
+
+    <!-- 选中标记 -->
+    <ImageView
+        android:id="@+id/icon"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_marginEnd="12dp"
+        android:src="@drawable/ic_node_idle" />
 
     <LinearLayout
-        android:orientation="vertical"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_weight="1">
+        android:layout_weight="1"
+        android:orientation="vertical">
 
         <TextView
             android:id="@+id/tvName"
+            style="@style/Text.Body"
             android:textStyle="bold"
-            android:textSize="15sp"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="节点名称" />
 
-        <TextView
-            android:id="@+id/tvDetail"
-            android:textSize="12sp"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="2dp">
 
-        <TextView
-            android:id="@+id/tvLatency"
-            android:textSize="12sp"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
+            <TextView
+                android:id="@+id/tvDetail"
+                style="@style/Text.Caption"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="vless · 1.1.1.1:443" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/tvLatency"
+                style="@style/Text.Caption"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="未测速"
+                android:textStyle="bold" />
+        </LinearLayout>
     </LinearLayout>
 
     <Button
         android:id="@+id/btnUse"
+        style="@style/Btn.Primary"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="使用" />
+        android:layout_marginStart="12dp"
+        android:text="使用"
+        android:minWidth="56dp" />
 
     <Button
         android:id="@+id/btnDel"
+        style="@style/Btn.Ghost"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="删" />
+        android:layout_marginStart="4dp"
+        android:text="删"
+        android:minWidth="40dp" />
 </LinearLayout>

@@ -1,59 +1,71 @@
-# ProxyBrowser —— 轻量代理浏览器 App（内嵌 xray-core）
+# ProxyBrowser
 
-自己有代理节点、不想装 v2ray 类独立 App、只在手机浏览器里访问 YouTube / X / Telegram。
-本工程 = 系统 WebView 浏览器 + 内嵌 xray-core 本地代理，**不走 VpnService**，
-仅代理 App 内浏览器，免费、稳定度由你节点决定。无任何本地 Android 环境要求，APK 由 GitHub Actions 云端编译。
+轻量 Android 代理浏览器 App，**App 内 WebView + 内嵌 xray-core** 直接走自己的代理节点，无需 VpnService / 第三方代理 App。
+
+## 特性
+
+| 模块 | 实现 |
+|---|---|
+| **代理核心** | 内嵌官方 xray-core 二进制（arm64-v8a），本地起 SOCKS5 10808 |
+| **节点** | vless / vmess / trojan 单条 + 订阅导入（sub:// / https://） |
+| **测速** | TCP 探活 + 可选代理延迟，永远有结果 |
+| **WebView** | `shouldInterceptRequest` 拦截所有请求走 SOCKS5，不依赖 ProxyController |
+| **广告拦截** | 内置精简规则集（EasyList 风格），命中返回 204 |
+| **油猴脚本** | 解析 @match / @include / @exclude，注入 + `GM_setValue` / `GM_getValue` 桥 |
+| **视频嗅探** | JS 钩子捕获 `.mp4` / `.m3u8` / `.flv` / `.ts` 等媒体源 |
+| **主页** | 内置搜索 + 8 个常用入口卡片 |
+| **界面** | VIA 风格：白底黑字、4dp 圆角、单色蓝强调 |
 
 ## 架构
 
 ```
-App 内 WebView（轻量浏览器 + 地址栏）
-   └─> 本地 HTTP 代理 127.0.0.1:10809   （ProxyController 仅代理此 WebView）
-         └─> xray-core 进程（官方二进制，assets/xray/xray）
-               └─> 节点 vless / vmess / trojan（单条 or 订阅）
-                     └─> 目标站点
-
-测速另起一个临时 xray + SOCKS 127.0.0.1:10808，握手测延迟。
+App 内 WebView
+    └─ shouldInterceptRequest → SOCKS5 (127.0.0.1:10808)
+                                  └─ xray-core (内置二进制)
+                                        └─ 你的节点 (vless/vmess/trojan)
+                                              └─ YouTube / X / Telegram / 任意站点
 ```
 
-> **不依赖 libv2ray / JitPack**。xray-core 官方二进制由 CI 在编译时下载到 `app/src/main/assets/xray/xray`，App 通过 `ProcessBuilder` 直接拉起。
+| 文件 | 作用 |
+|---|---|
+| `core/V2RayManager.kt` | xray 进程生命周期 + 测速握手 |
+| `core/XrayConfig.kt` | ProxyNode → xray JSON 配置 |
+| `core/AdBlocker.kt` | 内置规则集 + 命中判定 |
+| `core/UserScriptEngine.kt` | 元数据解析 + 注入代码生成 |
+| `core/VideoSniffer.kt` | 嗅探列表 + 持久化 + JS 钩子 |
+| `core/Settings.kt` | 开关持久化（广告/油猴/嗅探/DNT/UA） |
+| `data/ProxyNode.kt` + `NodeParser.kt` | 节点模型 + vless/vmess/trojan/subscription 解析 |
+| `data/NodeStore.kt` | SharedPreferences 持久化 |
+| `ui/NodesActivity.kt` | 节点管理（增删/订阅/测速/选用） |
+| `ui/BrowserActivity.kt` | 浏览器主页 + 拦截 + 注入 + 嗅探 |
+| `ui/SnifferActivity.kt` | 嗅探列表（下载/复制/删除） |
+| `ui/SettingsActivity.kt` | 开关 + 脚本管理 + 自定义 UA |
+| `assets/home.html` | 浏览器主页 HTML（搜索 + 书签卡片 + 状态） |
+| `.github/workflows/build.yml` | CI：下载 xray 二进制 + 编译 APK |
 
-## 功能路线
+## 上手
 
-| 功能 | 状态 | 实现 |
-|---|---|---|
-| 轻量 WebView 浏览器 + 地址栏 | ✅ P1 | 系统 WebView + `ProxyController` |
-| 单条节点 vless/vmess/trojan | ✅ P1 | `NodeParser.parseSingle` |
-| 订阅导入（sub:// 或 https） | ✅ P1 | `NodeParser.parse` |
-| 节点持久化 | ✅ P5 | `NodeStore`（SharedPreferences） |
-| 节点列表 / 选用 / 删除 | ✅ P5 | `NodesActivity` |
-| 实时测速 / 有效性 | ✅ P5 | `V2RayManager.measure`（SOCKS5 CONNECT） |
-| 广告拦截 | ⬜ P2 | `shouldInterceptRequest` + EasyList |
-| 油猴脚本 | ⬜ P3 | 解析 `@match`/`@run-at` + `GM_*` 桥 |
-| 视频嗅探 | ⬜ P4 | 注入 JS 钩 `HTMLMediaElement`/`fetch` |
+1. **下载** `ProxyBrowser.zip`，解压
+2. GitHub 新建仓库 `ProxyBrowser`（别勾 README）→ 拖入解压后**所有根级内容**（含隐藏的 `.github/`）
+3. 进入 **Actions** → `Build APK` 自动跑（5–15 分钟）
+4. 下载 Artifacts 里的 `app-debug-apk`，安装到手机
+5. 打开 App → 添加 / 订阅 节点 → 测速 → 选节点「使用」→ 自动打开浏览器
 
-## 使用流程
+## 主题 (VIA 风格)
 
-1. 打开 App → 进入「代理节点」页。
-2. 「＋ 单节点」粘贴 `vless://` / `vmess://` / `trojan://`；或「⇩ 订阅」粘贴 `sub://` / `https` 订阅链接。
-3. 「测速」批量测延迟，挑快的。
-4. 点节点右侧「使用」→ 自动连节点并打开浏览器，直接访问 YouTube / X / Telegram。
+| 元素 | 值 |
+|---|---|
+| 背景 | `#FFFFFF` |
+| 主文本 | `#1A1A1A` |
+| 副文本 | `#6B7280` |
+| 主色 | `#3B82F6` (蓝) |
+| 成功 | `#10B981` (绿) |
+| 危险 | `#EF4444` (红) |
+| 圆角 | 4dp（按钮） / 8dp（卡片） / 20dp（地址栏） |
 
-## 构建（CI 出 APK）
+## 已知限制
 
-1. 把本目录内容（注意 `.github/` 是隐藏文件夹）推到 GitHub 仓库 `ProxyBrowser`。
-2. GitHub Actions 自动用 JDK17 + Gradle 编译 `app:assembleDebug`，CI 中会先下载 xray-core 二进制到 `assets/xray/`，再打包进 APK。
-3. 产物为 `app-debug.apk`，侧载安装即可（个人使用，无需上架）。
-
-> 上传时若 .github 漏传：到 Actions 页 → set up a workflow yourself → 粘贴本仓 `.github/workflows/build.yml` 内容即可。
-
-## 目录
-
-- `data/ProxyNode.kt` —— 节点模型 + 单条/订阅解析
-- `data/NodeStore.kt` —— 节点持久化（SharedPreferences）
-- `core/XrayConfig.kt` —— 节点 → xray 配置（HTTP + SOCKS 双入站）
-- `core/V2RayManager.kt` —— `ProcessBuilder` 拉起 xray，含测速
-- `ui/NodesActivity.kt` + `res/layout/activity_nodes.xml` + `item_node.xml` —— 节点管理 UI
-- `ui/BrowserActivity.kt` —— WebView 浏览器 + 地址栏 + 本地代理
-- `App.kt` —— 应用入口，预热 xray 二进制
-- `.github/workflows/build.yml` —— 云端编译 APK（含 xray-core 下载）
+- **xray 二进制只支持 arm64-v8a** —— 覆盖 99% 国产手机；armeabi-v7a / x86 设备需在 `build.yml` 追加其他 release zip
+- **YouTube 视频嗅探**对加密流媒体（`googlevideo.com` 分段）成功率中等，能抓到主 m3u8 入口
+- **油猴**只支持最小集（@match / @include / @exclude / GM_setValue / GM_getValue / GM_deleteValue），不支持 unsafeWindow / @require
+- **WebView 拦截**对 100% 重定向或 blob URL 不支持
