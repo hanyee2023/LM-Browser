@@ -18,7 +18,8 @@ import android.content.Context
 object AdBlocker {
 
     @Volatile private var enabled: Boolean = true
-    private val rules: List<Rule> = parse(BUILTIN_RULES)
+    // lazy 推迟到首次调用，避免与下行 BUILTIN_RULES 之间出现 init-order warning
+    private val rules: List<Rule> by lazy { parse(BUILTIN_RULES) }
 
     fun setEnabled(on: Boolean) { enabled = on }
 
