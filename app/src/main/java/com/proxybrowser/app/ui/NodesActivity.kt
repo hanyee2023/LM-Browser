@@ -22,6 +22,7 @@ import com.proxybrowser.app.core.V2RayManager
 import com.proxybrowser.app.data.NodeParser
 import com.proxybrowser.app.data.NodeStore
 import com.proxybrowser.app.data.ProxyNode
+import java.net.HttpURLConnection
 
 /**
  * 节点管理页（P5 完整重写）
