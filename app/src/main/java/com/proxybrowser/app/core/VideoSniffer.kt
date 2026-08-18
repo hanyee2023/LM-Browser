@@ -91,7 +91,7 @@ object VideoSniffer {
      *   2) window.fetch / XMLHttpRequest.open → 拿到流媒体 URL
      *   3) 监听 'source' 标签
      */
-    const val HOOK_JS: String = """
+    @JvmField val HOOK_JS: String = """
         (function(){
             if (window.__pb_sniffed) return;
             window.__pb_sniffed = true;
