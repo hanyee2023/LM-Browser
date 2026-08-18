@@ -21,8 +21,8 @@ import java.util.concurrent.TimeUnit
  *   - 每次 start 写一份配置到 cacheDir，然后 ProcessBuilder 拉起 xray run -c <config>
  *
  * 通信：
- *   - WebView 走 HTTP 入站 127.0.0.1:10809（ProxyController）
- *   - 测速走 SOCKS 入站 127.0.0.1:10808（做 SOCKS5 CONNECT 握手）
+ *   - SOCKS5 入站 127.0.0.1:10808（给 BrowserActivity 拦截 WebView 请求走代理 + 给测速握手）
+ *   - HTTP   入站 127.0.0.1:10809（保留备用）
  */
 object V2RayManager {
 

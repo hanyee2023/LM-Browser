@@ -8,8 +8,8 @@ import org.json.JSONObject
  * 把 ProxyNode 转成 xray-core 配置 JSON。
  *
  * 入站：
- *   - HTTP  127.0.0.1:10809  →  给 WebView 走 ProxyController 用
- *   - SOCKS 127.0.0.1:10808  →  给节点测速用（做 SOCKS5 CONNECT 握手）
+ *   - SOCKS 127.0.0.1:10808  →  BrowserActivity 拦截 WebView 请求走代理 / 节点测速握手
+ *   - HTTP  127.0.0.1:10809  →  备用（保留以便将来支持其他客户端）
  *
  * 出站：按节点类型生成 vless/vmess/trojan outbound + streamSettings。
  */
