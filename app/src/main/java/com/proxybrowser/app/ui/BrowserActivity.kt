@@ -139,8 +139,8 @@ class BrowserActivity : AppCompatActivity() {
                     progressBar.progress = newProgress
                     progressBar.visibility = if (newProgress >= 100) View.GONE else View.VISIBLE
                 }
-                override fun onTitleChanged(view: WebView?, title: CharSequence?) {
-                    if (title != null) currentUrl = title.toString()
+                override fun onReceivedTitle(view: WebView?, title: String?) {
+                    if (title != null) currentUrl = title
                 }
             }
             addJavascriptInterface(JsBridge(this@BrowserActivity), "PB")
@@ -196,11 +196,11 @@ class BrowserActivity : AppCompatActivity() {
         }
     }
 
-    private fun lp(w: Int, h: Int, weight: Float, l: Int, t: Int, r: Int): LinearLayout.LayoutParams {
+    private fun lp(w: Int, h: Int, weight: Int, l: Int, t: Int, r: Int): LinearLayout.LayoutParams {
         return LinearLayout.LayoutParams(
             if (w == 0) 0 else dp(w),
             if (h == 0) 0 else dp(h),
-            weight
+            weight.toFloat()
         ).apply { setMargins(dp(l), dp(t), dp(r), 0) }
     }
 
