@@ -56,7 +56,7 @@ val downloadXray by tasks.registering {
             commandLine(
                 "bash", "-c",
                 "set -e; " +
-                "curl -L -o /tmp/xray.zip https://github.com/XTLS/Xray-core/releases/download/$ver/xray-android-arm64-v8a.zip; " +
+                "curl -L -o /tmp/xray.zip https://github.com/XTLS/Xray-core/releases/download/$ver/Xray-android-arm64-v8a.zip; " +
                 "unzip -o /tmp/xray.zip -d /tmp/xray-extract; " +
                 "cp /tmp/xray-extract/xray ${xrayBin.asFile.absolutePath}; " +
                 "chmod +x ${xrayBin.asFile.absolutePath}; " +
