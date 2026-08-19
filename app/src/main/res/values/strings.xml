@@ -1,38 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 极简字符串：只放 App 内一定会引用到的，长的不要写死在布局里 -->
     <string name="app_name">ProxyBrowser</string>
-
-    <!-- 节点页 -->
-    <string name="title_nodes">代理节点</string>
-    <string name="action_add">添加</string>
-    <string name="action_sub">订阅</string>
-    <string name="action_test">测速</string>
-    <string name="action_use">使用</string>
-    <string name="action_del">删除</string>
-    <string name="action_open_browser">打开浏览器</string>
-
-    <!-- 浏览器页 -->
-    <string name="hint_url">输入网址或搜索</string>
-    <string name="action_back">后退</string>
-    <string name="action_forward">前进</string>
-    <string name="action_refresh">刷新</string>
-    <string name="action_home">主页</string>
-    <string name="action_stop">停止</string>
-    <string name="action_bookmarks">书签</string>
-    <string name="action_sniffer">嗅探</string>
-    <string name="action_settings">设置</string>
-
-    <!-- 提示 -->
-    <string name="toast_no_active">请先选一个节点</string>
-    <string name="toast_xray_failed">xray-core 未就绪，请重装 App</string>
-    <string name="toast_sub_timeout">订阅超时（5s）</string>
-    <string name="toast_sub_fail">订阅获取失败</string>
-    <string name="toast_sub_empty">未解析到节点</string>
-    <string name="toast_sub_ok">已导入 %d 个节点</string>
-    <string name="toast_test_done">测速完成</string>
-
-    <!-- 主页常用入口 -->
-    <string name="home_search_hint">搜索或输入网址</string>
-    <string name="home_subtitle">轻量代理浏览器 · 广告拦截 · 油猴 · 视频嗅探</string>
+    <string name="hint_url">Search or enter URL</string>
+    <string name="toast_xray_failed">Proxy start failed, reinstall app</string>
+    <string name="home_search_hint">Search or enter URL</string>
+    <string name="home_subtitle">Lightweight proxy browser · AdBlock · Userscripts · Sniffer</string>
 </resources>

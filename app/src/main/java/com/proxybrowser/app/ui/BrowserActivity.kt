@@ -26,6 +26,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.proxybrowser.app.R
 import com.proxybrowser.app.core.AdBlocker
@@ -47,17 +48,22 @@ class BrowserActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private lateinit var urlBar: EditText
     private lateinit var progressBar: ProgressBar
+    private lateinit var proxyToggle: ImageView
+    private lateinit var btnSearch: ImageView
     private lateinit var btnBack: ImageView
     private lateinit var btnForward: ImageView
-    private lateinit var btnRefresh: ImageView
     private lateinit var btnHome: ImageView
-    private lateinit var btnSniffer: ImageView
+    private lateinit var btnTabs: ImageView
     private lateinit var btnSettings: ImageView
-    private lateinit var btnClose: ImageView
-    private lateinit var btnNodeLabel: TextView
+    private lateinit var btnRefresh: ImageView
+    private lateinit var btnSniffer: ImageView
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val ioExecutor = Executors.newSingleThreadExecutor { Thread(it, "pb-io").apply { isDaemon = true } }
+
+    // Tab management (simplified single-tab for now, structure ready for multi-tab)
+    private var currentUrl = ""
+    private val tabStack = mutableListOf<String>()
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -74,14 +80,15 @@ class BrowserActivity : AppCompatActivity() {
 
         val ok = V2RayManager.start(this, active)
         if (!ok) {
-            Toast.makeText(this, getString(R.string.toast_xray_failed), Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Proxy start failed", Toast.LENGTH_LONG).show()
         }
 
+        // ============ Top bar ============
         urlBar = EditText(this).apply {
-            hint = getString(R.string.hint_url)
+            hint = "Search or enter URL"
             setSingleLine()
             setBackgroundResource(R.drawable.bg_url_bar)
-            setPadding(36, 18, 36, 18)
+            setPadding(36, 14, 40, 14)
             textSize = 14f
             imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_GO
             setOnEditorActionListener { _, _, _ ->
@@ -89,34 +96,34 @@ class BrowserActivity : AppCompatActivity() {
                 true
             }
             addTextChangedListener(object : TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                    refreshButtons()
-                }
-                override fun afterTextChanged(s: Editable?) {}
+                override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
+                override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
+                override fun afterTextChanged(s: Editable?) { refreshNavButtons() }
             })
         }
         urlBar.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_search, 0, 0, 0)
         urlBar.compoundDrawablePadding = 6
 
+        proxyToggle = makeIconBtn(R.drawable.dot_on) { toggleProxy() }
+        btnSearch = makeIconBtn(R.drawable.ic_search) { searchText() }
+
+        val topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(8, 8, 8, 4)
+            addView(proxyToggle, lp(36, 36, 0, 0, 0, 2))
+            addView(urlBar, lp(0, 40, 1f, 2, 0, 2))
+            addView(btnSearch, lp(36, 36, 0, 2, 0, 0))
+        }
+
+        // ============ Progress bar ============
         progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
             progress = 0
             visibility = View.GONE
         }
 
-        btnClose = makeIconButton(R.drawable.ic_close) { urlBar.setText("") }
-        btnSniffer = makeIconButton(R.drawable.ic_sniffer) { startActivity(Intent(this@BrowserActivity, SnifferActivity::class.java)) }
-
-        val topBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(12, 12, 12, 4)
-            addView(urlBar, lp(0, 40, 1, 0, 0, 0))
-            addView(btnSniffer, lp(40, 40, 0, 6, 0, 0))
-            addView(btnClose, lp(40, 40, 0, 6, 0, 0))
-        }
-
+        // ============ WebView ============
         webView = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -132,42 +139,42 @@ class BrowserActivity : AppCompatActivity() {
                     progressBar.progress = newProgress
                     progressBar.visibility = if (newProgress >= 100) View.GONE else View.VISIBLE
                 }
+                override fun onTitleChanged(view: WebView?, title: CharSequence?) {
+                    if (title != null) currentUrl = title.toString()
+                }
             }
             addJavascriptInterface(JsBridge(this@BrowserActivity), "PB")
         }
 
-        btnBack = makeIconButton(R.drawable.ic_back) { if (webView.canGoBack()) webView.goBack() }
-        btnForward = makeIconButton(R.drawable.ic_forward) { if (webView.canGoForward()) webView.goForward() }
-        btnRefresh = makeIconButton(R.drawable.ic_refresh) { webView.reload() }
-        btnHome = makeIconButton(R.drawable.ic_home) { loadHome() }
-        btnSettings = makeIconButton(R.drawable.ic_settings) { startActivity(Intent(this@BrowserActivity, SettingsActivity::class.java)) }
+        // ============ Bottom bar ============
+        btnBack = makeIconBtn(R.drawable.ic_back) { if (webView.canGoBack()) webView.goBack() }
+        btnForward = makeIconBtn(R.drawable.ic_forward) { if (webView.canGoForward()) webView.goForward() }
+        btnRefresh = makeIconBtn(R.drawable.ic_refresh) { webView.reload() }
+        btnHome = makeIconBtn(R.drawable.ic_home) { loadHome() }
+        btnSniffer = makeIconBtn(R.drawable.ic_sniffer) { startActivity(Intent(this@BrowserActivity, SnifferActivity::class.java)) }
+        btnTabs = makeIconBtn(R.drawable.ic_bookmark) { showTabsDialog() }
+        btnSettings = makeIconBtn(R.drawable.ic_settings) { startActivity(Intent(this@BrowserActivity, SettingsActivity::class.java)) }
 
         val bottomBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(8, 8, 8, 8)
+            setPadding(4, 8, 4, 8)
             setBackgroundColor(getColor(R.color.bg))
-            addView(btnBack, lp(0, 44, 1, 0, 0, 0))
-            addView(btnForward, lp(0, 44, 1, 0, 0, 0))
-            addView(btnRefresh, lp(0, 44, 1, 0, 0, 0))
-            addView(btnHome, lp(0, 44, 1, 0, 0, 0))
-            addView(btnSniffer, lp(0, 44, 1, 0, 0, 0))
-            addView(btnSettings, lp(0, 44, 1, 0, 0, 0))
+            addView(btnBack, lp(0, 44, 1f, 0, 0, 0))
+            addView(btnForward, lp(0, 44, 1f, 0, 0, 0))
+            addView(btnRefresh, lp(0, 44, 1f, 0, 0, 0))
+            addView(btnHome, lp(0, 44, 1f, 0, 0, 0))
+            addView(btnSniffer, lp(0, 44, 1f, 0, 0, 0))
+            addView(btnTabs, lp(0, 44, 1f, 0, 0, 0))
+            addView(btnSettings, lp(0, 44, 1f, 0, 0, 0))
         }
 
-        btnNodeLabel = TextView(this).apply {
-            setPadding(16, 0, 16, 8)
-            textSize = 11f
-            setTextColor(getColor(R.color.text_tertiary))
-            text = "Proxy: ${active.name}"
-        }
-
+        // ============ Root layout ============
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(getColor(R.color.bg))
             addView(topBar)
-            addView(progressBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(4)))
-            addView(btnNodeLabel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(progressBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(3)))
             addView(webView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             addView(View(this@BrowserActivity).apply {
                 setBackgroundColor(getColor(R.color.divider))
@@ -176,24 +183,24 @@ class BrowserActivity : AppCompatActivity() {
             addView(bottomBar)
         }
         setContentView(root)
-        refreshButtons()
+        refreshNavButtons()
         loadHome()
     }
 
-    private fun makeIconButton(resId: Int, onClick: () -> Unit): ImageView {
+    private fun makeIconBtn(resId: Int, onClick: () -> Unit): ImageView {
         return ImageView(this).apply {
             setImageResource(resId)
             setBackgroundResource(R.drawable.bg_btn_ghost)
-            setPadding(8, 8, 8, 8)
+            setPadding(10, 10, 10, 10)
             setOnClickListener { onClick() }
         }
     }
 
-    private fun lp(w: Int, h: Int, weight: Int, l: Int, t: Int, r: Int): LinearLayout.LayoutParams {
+    private fun lp(w: Int, h: Int, weight: Float, l: Int, t: Int, r: Int): LinearLayout.LayoutParams {
         return LinearLayout.LayoutParams(
             if (w == 0) 0 else dp(w),
             if (h == 0) 0 else dp(h),
-            weight.toFloat()
+            weight
         ).apply { setMargins(dp(l), dp(t), dp(r), 0) }
     }
 
@@ -202,6 +209,8 @@ class BrowserActivity : AppCompatActivity() {
     private fun loadHome() {
         val html = assets.open("home.html").bufferedReader(Charsets.UTF_8).use { it.readText() }
         webView.loadDataWithBaseURL("https://pb.local/", html, "text/html", "utf-8", null)
+        currentUrl = ""
+        urlBar.setText("")
     }
 
     private fun navigateTo(input: String) {
@@ -212,20 +221,63 @@ class BrowserActivity : AppCompatActivity() {
             raw.contains(' ') || !raw.contains('.') -> Settings.searchEngine() + Uri.encode(raw)
             else -> "https://" + raw
         }
+        tabStack.add(u)
         webView.loadUrl(u)
     }
 
-    private fun refreshButtons() {
+    private fun searchText() {
+        val q = urlBar.text.toString().trim()
+        if (q.isNotEmpty()) {
+            navigateTo(q)
+        } else {
+            // Open search page
+            navigateTo("")
+        }
+    }
+
+    private fun refreshNavButtons() {
         btnBack.isEnabled = webView.canGoBack()
         btnBack.alpha = if (webView.canGoBack()) 1f else 0.3f
         btnForward.isEnabled = webView.canGoForward()
         btnForward.alpha = if (webView.canGoForward()) 1f else 0.3f
     }
 
+    private fun toggleProxy() {
+        val active = NodeStore.getActive(this) ?: return
+        if (V2RayManager.isRunning()) {
+            V2RayManager.stop()
+            proxyToggle.setImageResource(R.drawable.dot_off)
+            Toast.makeText(this, "Proxy disabled", Toast.LENGTH_SHORT).show()
+        } else {
+            if (V2RayManager.start(this, active)) {
+                proxyToggle.setImageResource(R.drawable.dot_on)
+                Toast.makeText(this, "Proxy enabled: ${active.name}", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Failed to start proxy", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun showTabsDialog() {
+        if (tabStack.isEmpty()) {
+            Toast.makeText(this, "No tabs yet", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val items = tabStack.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Open Tabs")
+            .setItems(items) { _, which ->
+                val url = items[which]
+                webView.loadUrl(url)
+            }
+            .setPositiveButton("Close", null)
+            .show()
+    }
+
     override fun onResume() {
         super.onResume()
         AdBlocker.loadEnabled(this)
-        refreshButtons()
+        refreshNavButtons()
     }
 
     override fun onDestroy() {
@@ -234,6 +286,7 @@ class BrowserActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    // ============ WebViewClient ============
     private inner class ProxyingClient(private val node: ProxyNode) : WebViewClient() {
         private val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 10808))
         private val tag = "ProxyClient"
@@ -250,17 +303,13 @@ class BrowserActivity : AppCompatActivity() {
             return false
         }
 
-        override fun shouldInterceptRequest(
-            view: WebView,
-            request: WebResourceRequest
-        ): WebResourceResponse? {
+        override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
             val url = request.url.toString()
             if (url.startsWith("data:") || url.startsWith("blob:") ||
                 url.startsWith("about:") || url.startsWith("javascript:")
             ) return null
             if (AdBlocker.shouldBlock(url)) return emptyResponse()
-            return try { fetchViaSocks(request, url) }
-            catch (e: Exception) { null }
+            return try { fetchViaSocks(request, url) } catch (e: Exception) { null }
         }
 
         override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
@@ -273,7 +322,7 @@ class BrowserActivity : AppCompatActivity() {
 
         override fun onPageFinished(view: WebView, url: String?) {
             super.onPageFinished(view, url)
-            refreshButtons()
+            refreshNavButtons()
             if (Settings.isUserScript(this@BrowserActivity)) {
                 val scripts = UserScriptEngine.loadAll(this@BrowserActivity)
                 val matched = UserScriptEngine.matches(url ?: "", scripts)
@@ -326,6 +375,7 @@ class BrowserActivity : AppCompatActivity() {
         }
     }
 
+    // ============ JS Bridge ============
     private inner class JsBridge(private val ctx: Context) {
         @JavascriptInterface
         fun report(json: String) {
@@ -354,7 +404,7 @@ class BrowserActivity : AppCompatActivity() {
             val nameEsc = active.name.replace("\\", "\\\\").replace("'", "\\'")
             val addrEsc = active.address.replace("\\", "\\\\").replace("'", "\\'")
             val js = "document.getElementById('proxyLabel').textContent='Proxy: ${nameEsc}';" +
-                "document.getElementById('proxyDetail').textContent='${active.type.name} · ${addrEsc}:${active.port}';" +
+                "document.getElementById('proxyDetail').textContent='${active.type.name} - ${addrEsc}:${active.port}';" +
                 "document.getElementById('proxyDot').className='proxy-status on';"
             webView.evaluateJavascript(js, null)
         }

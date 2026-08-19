@@ -18,27 +18,17 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.proxybrowser.app.R
-import com.proxybrowser.app.core.V2RayManager
 import com.proxybrowser.app.data.NodeParser
 import com.proxybrowser.app.data.NodeStore
 import com.proxybrowser.app.data.ProxyNode
 import java.net.HttpURLConnection
 
-/**
- * 节点管理页（P5 完整重写）
- *
- * 关键修复（相比上一版）：
- *   - 订阅导入用 HttpURLConnection，5s 超时，能区分超时 / 网络错 / 解析错
- *   - 测速「两段式」：先 TCP 探活（不依赖 xray，永远出结果）→ 然后跑 xray 测真实代理延迟
- *   - 顶栏显示当前 active node + 状态
- *   - 空列表时给提示
- *   - 主操作变成「浏览」，一键用当前活动节点进 WebView
- */
 class NodesActivity : AppCompatActivity() {
 
     private lateinit var rv: RecyclerView
     private lateinit var adapter: NodeAdapter
     private val nodes = mutableListOf<ProxyNode>()
+    private var sortByLatency = true
 
     private lateinit var tvActiveName: TextView
     private lateinit var tvActiveSub: TextView
@@ -59,12 +49,11 @@ class NodesActivity : AppCompatActivity() {
         loading = findViewById(R.id.loading)
         btnOpen = findViewById(R.id.btnOpen)
 
-        nodes.addAll(NodeStore.load(this))
-        adapter = NodeAdapter(
-            this,
-            nodes,
+        loadNodes()
+        adapter = NodeAdapter(this, nodes,
             onUse = { useNode(it) },
-            onDel = { deleteNode(it) }
+            onDel = { deleteNode(it) },
+            onTest = { i -> testSingle(i) }
         )
         rv.layoutManager = LinearLayoutManager(this)
         rv.adapter = adapter
@@ -72,17 +61,17 @@ class NodesActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnAdd).setOnClickListener { addSingle() }
         findViewById<Button>(R.id.btnSub).setOnClickListener { importSubscription() }
         findViewById<Button>(R.id.btnTest).setOnClickListener { testAll() }
+        findViewById<Button>(R.id.btnSort).setOnClickListener { toggleSort() }
         findViewById<Button>(R.id.btnSettings).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
         findViewById<Button>(R.id.btnChangeNode).setOnClickListener {
-            // 当前节点区域也是个入口，相当于滚到列表
             rv.smoothScrollToPosition(0)
         }
         btnOpen.setOnClickListener {
             val active = NodeStore.getActive(this)
             if (active == null) {
-                Toast.makeText(this, "请先选一个节点", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Please select a node first", Toast.LENGTH_SHORT).show()
             } else {
                 startActivity(Intent(this, BrowserActivity::class.java))
             }
@@ -93,25 +82,42 @@ class NodesActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        loadNodes()
         refreshActiveBar()
-        // 节点列表可能在设置页改了东西回来要刷新
-        nodes.clear()
-        nodes.addAll(NodeStore.load(this))
         adapter.notifyDataSetChanged()
         refreshEmpty()
+    }
+
+    private fun loadNodes() {
+        nodes.clear()
+        nodes.addAll(NodeStore.load(this))
+        applySort()
+    }
+
+    private fun applySort() {
+        if (sortByLatency) {
+            nodes.sortBy { if (it.latencyMs > 0) it.latencyMs else Long.MAX_VALUE }
+        }
+    }
+
+    private fun toggleSort() {
+        sortByLatency = !sortByLatency
+        applySort()
+        adapter.notifyDataSetChanged()
+        Toast.makeText(this, if (sortByLatency) "Sorted by latency (low to high)" else "Sorted by manual order", Toast.LENGTH_SHORT).show()
     }
 
     private fun refreshActiveBar() {
         val active = NodeStore.getActive(this)
         if (active == null) {
-            tvActiveName.text = "未选择节点"
-            tvActiveSub.text = "点击下方「添加」或「订阅」导入你的代理"
+            tvActiveName.text = "No node selected"
+            tvActiveSub.text = "Tap Add or Subscribe to import a proxy node"
             statusDot.setBackgroundResource(R.drawable.dot_off)
             btnOpen.isEnabled = false
             btnOpen.alpha = 0.5f
         } else {
             tvActiveName.text = active.name
-            tvActiveSub.text = "${active.type.name} · ${active.address}:${active.port}"
+            tvActiveSub.text = "${active.type.name}  ${active.address}:${active.port}"
             statusDot.setBackgroundResource(R.drawable.dot_on)
             btnOpen.isEnabled = true
             btnOpen.alpha = 1f
@@ -128,7 +134,6 @@ class NodesActivity : AppCompatActivity() {
         }
     }
 
-    // ============== 添加单节点 ==============
     private fun addSingle() {
         val et = EditText(this).apply {
             hint = "vless:// / vmess:// / trojan://"
@@ -138,44 +143,43 @@ class NodesActivity : AppCompatActivity() {
             setTextColor(getColor(R.color.text_primary))
         }
         AlertDialog.Builder(this)
-            .setTitle("添加节点")
+            .setTitle("Add Node")
             .setView(et)
-            .setPositiveButton("添加") { _, _ ->
+            .setPositiveButton("Add") { _, _ ->
                 val raw = et.text.toString().trim()
                 if (raw.isEmpty()) return@setPositiveButton
                 val n = NodeParser.parseSingle(raw)
                 if (n == null) {
-                    Toast.makeText(this, "无法解析该节点（检查格式）", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Cannot parse node (check format)", Toast.LENGTH_SHORT).show()
                 } else {
                     nodes.add(n)
                     NodeStore.save(this, nodes)
                     adapter.notifyItemInserted(nodes.size - 1)
                     refreshEmpty()
-                    Toast.makeText(this, "已添加：${n.name}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Added: ${n.name}", Toast.LENGTH_SHORT).show()
                 }
             }
-            .setNegativeButton("取消", null)
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
-    // ============== 订阅导入（带超时） ==============
     private fun importSubscription() {
         val et = EditText(this).apply {
-            hint = "https://...  或  sub://..."
+            hint = "https://...  or  sub://..."
             minHeight = (60 * resources.displayMetrics.density).toInt()
             setSingleLine(false)
             setPadding(24, 16, 24, 16)
             setTextColor(getColor(R.color.text_primary))
         }
         AlertDialog.Builder(this)
-            .setTitle("导入订阅")
+            .setTitle("Import Subscription")
             .setView(et)
-            .setPositiveButton("导入") { _, _ ->
+            .setPositiveButton("Import") { _, _ ->
                 val raw = et.text.toString().trim()
                 if (raw.isEmpty()) return@setPositiveButton
                 doImport(raw)
             }
-            .setNegativeButton("取消", null)
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
@@ -188,15 +192,15 @@ class NodesActivity : AppCompatActivity() {
                 val target = normalizeSub(raw)
                 val body = fetchWithTimeout(target, 5000, 8000)
                 if (body.isEmpty()) {
-                    err = "订阅内容为空"
+                    err = "Subscription content is empty"
                 } else {
                     parsed = NodeParser.parse(body)
-                    if (parsed.isEmpty()) err = "未解析到节点（格式不支持？）"
+                    if (parsed.isEmpty()) err = "No nodes parsed (unsupported format?)"
                 }
             } catch (e: java.net.SocketTimeoutException) {
-                err = "订阅超时（5s）"
+                err = "Subscription timeout (5s)"
             } catch (e: Exception) {
-                err = "订阅失败：${e.javaClass.simpleName}"
+                err = "Import failed: ${e.javaClass.simpleName}"
             }
             runOnUiThread {
                 loading.visibility = View.GONE
@@ -205,24 +209,21 @@ class NodesActivity : AppCompatActivity() {
                     return@runOnUiThread
                 }
                 val before = nodes.size
-                // 去重：同 name+address+port 视为同一节点
                 val merged = (nodes + parsed).distinctBy { "${it.name}|${it.address}:${it.port}" }
                 nodes.clear()
                 nodes.addAll(merged)
                 NodeStore.save(this, nodes)
                 adapter.notifyDataSetChanged()
                 refreshEmpty()
-                Toast.makeText(this, "已导入 ${parsed.size} 个（新增 ${nodes.size - before}）", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Imported ${parsed.size} nodes (+${nodes.size - before} new)", Toast.LENGTH_SHORT).show()
             }
         }.start()
     }
 
-    /** sub://xxx  → https://...  ; 别的当作 https ; 缺 scheme 且看起来像裸 base64 就当明文 */
     private fun normalizeSub(raw: String): String {
         return when {
             raw.startsWith("sub://") -> {
                 val body = raw.removePrefix("sub://")
-                // 大多数 sub:// 是 base64(host) 形式
                 val host = runCatching {
                     String(android.util.Base64.decode(body, android.util.Base64.DEFAULT))
                 }.getOrNull() ?: body
@@ -233,7 +234,6 @@ class NodesActivity : AppCompatActivity() {
         }
     }
 
-    /** 用 HttpURLConnection 而非 URL.readText()，方便挂超时。 */
     private fun fetchWithTimeout(url: String, connectMs: Int, readMs: Int): String {
         var conn: HttpURLConnection? = null
         return try {
@@ -250,40 +250,37 @@ class NodesActivity : AppCompatActivity() {
         }
     }
 
-    // ============== 一键测速（两段式） ==============
     private fun testAll() {
         if (nodes.isEmpty()) {
-            Toast.makeText(this, "请先添加节点", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Please add nodes first", Toast.LENGTH_SHORT).show()
             return
         }
         loading.visibility = View.VISIBLE
         statusDot.setBackgroundResource(R.drawable.dot_busy)
-        for ((i, n) in nodes.withIndex()) {
-            n.latencyMs = -1L
-            n.valid = true
-            adapter.notifyItemChanged(i)
-        }
-        // 并发上限 4，避免一台设备干爆 CPU
+        // Reset all latencies
+        nodes.forEach { it.latencyMs = -1L }
+        adapter.notifyDataSetChanged()
+
         val pool = java.util.concurrent.Executors.newFixedThreadPool(4)
-        var done = 0
         val total = nodes.size
-        for ((i, n) in nodes.withIndex()) {
+        val doneCount = intArrayOf(0)
+        // Use synchronized list access
+        val sortedIndices = nodes.indices.toList()
+
+        for (idx in sortedIndices) {
+            val node = nodes[idx]
             pool.execute {
-                val ms = testOne(n)
-                n.latencyMs = ms
-                n.valid = ms > 0
+                val ms = testOne(node)
+                node.latencyMs = ms
                 runOnUiThread {
-                    adapter.notifyItemChanged(i)
-                    done++
-                    if (done == total) {
+                    adapter.notifyItemChanged(idx)
+                    doneCount[0]++
+                    if (doneCount[0] >= total) {
                         loading.visibility = View.GONE
                         NodeStore.save(this, nodes)
                         statusDot.setBackgroundResource(R.drawable.dot_on)
-                        Toast.makeText(
-                            this,
-                            "测速完成：${nodes.count { it.latencyMs > 0 }}/${total} 个有效",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        val validCount = nodes.count { it.latencyMs > 0 }
+                        Toast.makeText(this, "Test done: $validCount/$total valid", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -291,17 +288,26 @@ class NodesActivity : AppCompatActivity() {
         pool.shutdown()
     }
 
-    /**
-     * 测单个节点：先 TCP 探活（连接目标的 IP:PORT，超时 3s），
-     * 不依赖 xray，永远出结果。再尝试启动临时 xray 测代理延迟（可选）。
-     */
+    private fun testSingle(index: Int) {
+        if (index < 0 || index >= nodes.size) return
+        loading.visibility = View.VISIBLE
+        val node = nodes[index]
+        Thread {
+            val ms = testOne(node)
+            node.latencyMs = ms
+            runOnUiThread {
+                loading.visibility = View.GONE
+                adapter.notifyItemChanged(index)
+                NodeStore.save(this, nodes)
+                Toast.makeText(this, "${node.name}: ${if (ms > 0) "$ms ms" else "unreachable"}", Toast.LENGTH_SHORT).show()
+            }
+        }.start()
+    }
+
     private fun testOne(node: ProxyNode): Long {
-        // 阶段 1：直连 TCP 探活
         val direct = directPing(node.address, node.port, 3000)
         if (direct < 0) return -1L
-        // 阶段 2：尝试代理延迟（如果 xray 存在）
-        val proxy = try { proxyPing(node, 6000) } catch (_: Exception) { -1L }
-        return if (proxy > 0) proxy else direct
+        return direct
     }
 
     private fun directPing(host: String, port: Int, timeoutMs: Int): Long {
@@ -315,24 +321,9 @@ class NodesActivity : AppCompatActivity() {
         } catch (_: Exception) { -1L }
     }
 
-    /** 启动临时 xray + SOCKS5 CONNECT 测代理延迟。失败返回 -1L。 */
-    private fun proxyPing(node: ProxyNode, timeoutMs: Long): Long {
-        // 不阻塞主流程；测不到就直接回 -1L
-        return try {
-            // 简化测速：仅复用 V2RayManager.measure
-            // 由于 measure 接收回调（异步），同步我们重写一个轻量版：
-            // 这里直接放弃代理测，回到 direct，简化路径
-            // （测真实代理延迟需要更精细的端口就绪检测，本期先稳为准）
-            -1L
-        } catch (_: Exception) {
-            -1L
-        }
-    }
-
-    // ============== 选用 / 删除 ==============
     private fun useNode(n: ProxyNode) {
         NodeStore.setActive(this, n)
-        Toast.makeText(this, "已切换到：${n.name}", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Switched to: ${n.name}", Toast.LENGTH_SHORT).show()
         refreshActiveBar()
         adapter.notifyDataSetChanged()
         startActivity(Intent(this, BrowserActivity::class.java))
@@ -346,7 +337,6 @@ class NodesActivity : AppCompatActivity() {
             adapter.notifyItemRemoved(idx)
             val active = NodeStore.getActive(this)
             if (active == n) {
-                // 当前活动被删除，取消活动
                 NodeStore.setActive(this, null)
             }
             refreshActiveBar()
@@ -355,12 +345,12 @@ class NodesActivity : AppCompatActivity() {
     }
 }
 
-// ============== 列表适配器 ==============
 private class NodeAdapter(
     private val activity: NodesActivity,
     private val list: MutableList<ProxyNode>,
     private val onUse: (ProxyNode) -> Unit,
-    private val onDel: (ProxyNode) -> Unit
+    private val onDel: (ProxyNode) -> Unit,
+    private val onTest: (Int) -> Unit
 ) : RecyclerView.Adapter<NodeAdapter.VH>() {
 
     class VH(view: View) : RecyclerView.ViewHolder(view) {
@@ -370,6 +360,7 @@ private class NodeAdapter(
         val latency: TextView = view.findViewById(R.id.tvLatency)
         val use: Button = view.findViewById(R.id.btnUse)
         val del: Button = view.findViewById(R.id.btnDel)
+        val test: Button = view.findViewById(R.id.btnTest)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -383,7 +374,7 @@ private class NodeAdapter(
         h.detail.text = "${n.type.name.lowercase()}  ${n.address}:${n.port}"
         h.latency.text = when {
             n.latencyMs > 0 -> "${n.latencyMs} ms"
-            else -> "未测速"
+            else -> "Not tested"
         }
         h.latency.setTextColor(
             when {
@@ -393,14 +384,13 @@ private class NodeAdapter(
                 else -> Color.parseColor("#EF4444")
             }
         )
-        // 当前活动节点用蓝色图标，否则灰色
         val active = NodeStore.getActive(activity)
         h.icon.setImageResource(if (active == n) R.drawable.ic_node_active else R.drawable.ic_node_idle)
-        // 活动节点把"使用"按钮改成"已在用"
-        h.use.text = if (active == n) "已在用" else "使用"
+        h.use.text = if (active == n) "Active" else "Use"
         h.use.isEnabled = active != n
         h.use.setOnClickListener { onUse(n) }
         h.del.setOnClickListener { onDel(n) }
+        h.test.setOnClickListener { onTest(pos) }
         h.itemView.setOnClickListener { onUse(n) }
     }
 
