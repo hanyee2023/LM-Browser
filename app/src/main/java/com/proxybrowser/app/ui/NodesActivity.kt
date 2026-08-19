@@ -35,7 +35,6 @@ class NodesActivity : AppCompatActivity() {
     private lateinit var statusDot: View
     private lateinit var emptyView: View
     private lateinit var loading: ProgressBar
-    private lateinit var btnOpen: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,7 +46,6 @@ class NodesActivity : AppCompatActivity() {
         statusDot = findViewById(R.id.statusDot)
         emptyView = findViewById(R.id.empty)
         loading = findViewById(R.id.loading)
-        btnOpen = findViewById(R.id.btnOpen)
 
         loadNodes()
         adapter = NodeAdapter(this, nodes,
@@ -67,14 +65,6 @@ class NodesActivity : AppCompatActivity() {
         }
         findViewById<Button>(R.id.btnChangeNode).setOnClickListener {
             rv.smoothScrollToPosition(0)
-        }
-        btnOpen.setOnClickListener {
-            val active = NodeStore.getActive(this)
-            if (active == null) {
-                Toast.makeText(this, "Please select a node first", Toast.LENGTH_SHORT).show()
-            } else {
-                startActivity(Intent(this, BrowserActivity::class.java))
-            }
         }
         refreshActiveBar()
         refreshEmpty()
@@ -113,14 +103,10 @@ class NodesActivity : AppCompatActivity() {
             tvActiveName.text = "No node selected"
             tvActiveSub.text = "Tap Add or Subscribe to import a proxy node"
             statusDot.setBackgroundResource(R.drawable.dot_off)
-            btnOpen.isEnabled = false
-            btnOpen.alpha = 0.5f
         } else {
             tvActiveName.text = active.name
             tvActiveSub.text = "${active.type.name}  ${active.address}:${active.port}"
             statusDot.setBackgroundResource(R.drawable.dot_on)
-            btnOpen.isEnabled = true
-            btnOpen.alpha = 1f
         }
     }
 
