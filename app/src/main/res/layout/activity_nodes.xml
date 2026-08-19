@@ -111,7 +111,7 @@
         android:orientation="horizontal"
         android:paddingHorizontal="12dp"
         android:paddingVertical="10dp"
-        android:background="@color:bg">
+        android:background="#FFFFFFFF">
 
         <Button android:id="@+id/btnAdd" style="@style/Btn.Secondary"
             android:layout_width="0dp" android:layout_weight="1"
