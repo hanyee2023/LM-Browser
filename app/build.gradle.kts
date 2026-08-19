@@ -42,3 +42,29 @@ dependencies {
 
     // 不再依赖 libv2ray。xray-core 二进制由 GitHub Actions 在编译时下载并打包到 assets/xray/xray。
 }
+
+// 把 xray-core 二进制自动下载进 assets，本地 assembleDebug 与 CI 行为一致。
+val downloadXray by tasks.registering {
+    val assetsDir = layout.projectDirectory.dir("src/main/assets/xray")
+    val xrayBin = assetsDir.file("xray")
+    // 仅当二进制不存在时才下载，避免重复拉取
+    onlyIf { !xrayBin.asFile.exists() }
+    doLast {
+        assetsDir.asFile.mkdirs()
+        val ver = "v1.8.4"
+        exec {
+            commandLine(
+                "bash", "-c",
+                "set -e; " +
+                "curl -L -o /tmp/xray.zip https://github.com/XTLS/Xray-core/releases/download/$ver/xray-android-arm64-v8a.zip; " +
+                "unzip -o /tmp/xray.zip -d /tmp/xray-extract; " +
+                "cp /tmp/xray-extract/xray ${xrayBin.asFile.absolutePath}; " +
+                "chmod +x ${xrayBin.asFile.absolutePath}; " +
+                "rm -rf /tmp/xray.zip /tmp/xray-extract"
+            )
+        }
+        println("xray binary ready at ${xrayBin.asFile.absolutePath}")
+    }
+}
+
+tasks.named("preBuild") { dependsOn(downloadXray) }
