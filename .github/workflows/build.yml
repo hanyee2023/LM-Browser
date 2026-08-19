@@ -24,17 +24,17 @@ jobs:
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
-      - name: Install Gradle 8.9
+      - name: Install Gradle 8.7
         run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.9-bin.zip
-          unzip -q gradle-8.9-bin.zip -d "$HOME/gradle-home"
-          echo "$HOME/gradle-home/gradle-8.9/bin" >> "$GITHUB_PATH"
+          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip
+          unzip -q gradle-8.7-bin.zip -d "$HOME/gradle-home"
+          echo "$HOME/gradle-home/gradle-8.7/bin" >> "$GITHUB_PATH"
 
       # 把官方 xray-core 二进制打进 APK，App 端无需任何 maven 依赖
       - name: Bundle xray-core binary (arm64-v8a)
         run: |
           mkdir -p app/src/main/assets/xray
-          wget -q "https://github.com/XTLS/Xray-core/releases/download/v1.8.4/xray-android-arm64-v8a.zip" -O /tmp/xray.zip
+          wget -q "https://github.com/XTLS/Xray-core/releases/download/v1.8.4/Xray-android-arm64-v8a.zip" -O /tmp/xray.zip
           unzip -o /tmp/xray.zip -d /tmp/xray-extract/
           cp /tmp/xray-extract/xray app/src/main/assets/xray/xray
           chmod +x app/src/main/assets/xray/xray
