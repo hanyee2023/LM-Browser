@@ -112,7 +112,7 @@ class BrowserActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(12, 12, 12, 4)
-            addView(urlBar, lp(0, 40, 1f, 0, 0, 0))
+            addView(urlBar, lp(0, 40, 1, 0, 0, 0))
             addView(btnSniffer, lp(40, 40, 0, 6, 0, 0))
             addView(btnClose, lp(40, 40, 0, 6, 0, 0))
         }
@@ -147,12 +147,12 @@ class BrowserActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(8, 8, 8, 8)
             setBackgroundColor(getColor(R.color.bg))
-            addView(btnBack, lp(0, 44, 1f, 0, 0, 0))
-            addView(btnForward, lp(0, 44, 1f, 0, 0, 0))
-            addView(btnRefresh, lp(0, 44, 1f, 0, 0, 0))
-            addView(btnHome, lp(0, 44, 1f, 0, 0, 0))
-            addView(btnSniffer, lp(0, 44, 1f, 0, 0, 0))
-            addView(btnSettings, lp(0, 44, 1f, 0, 0, 0))
+            addView(btnBack, lp(0, 44, 1, 0, 0, 0))
+            addView(btnForward, lp(0, 44, 1, 0, 0, 0))
+            addView(btnRefresh, lp(0, 44, 1, 0, 0, 0))
+            addView(btnHome, lp(0, 44, 1, 0, 0, 0))
+            addView(btnSniffer, lp(0, 44, 1, 0, 0, 0))
+            addView(btnSettings, lp(0, 44, 1, 0, 0, 0))
         }
 
         btnNodeLabel = TextView(this).apply {
@@ -189,11 +189,11 @@ class BrowserActivity : AppCompatActivity() {
         }
     }
 
-    private fun lp(w: Int, h: Int, weight: Float, l: Int, t: Int, r: Int): LinearLayout.LayoutParams {
+    private fun lp(w: Int, h: Int, weight: Int, l: Int, t: Int, r: Int): LinearLayout.LayoutParams {
         return LinearLayout.LayoutParams(
             if (w == 0) 0 else dp(w),
             if (h == 0) 0 else dp(h),
-            weight
+            weight.toFloat()
         ).apply { setMargins(dp(l), dp(t), dp(r), 0) }
     }
 
