@@ -112,7 +112,7 @@ class BrowserActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(8, 8, 8, 4)
             addView(proxyToggle, lp(36, 36, 0, 0, 0, 2))
-            addView(urlBar, lp(0, 40, 1f, 2, 0, 2))
+            addView(urlBar, lp(0, 40, 1, 2, 0, 2))
             addView(btnSearch, lp(36, 36, 0, 2, 0, 0))
         }
 
@@ -160,13 +160,13 @@ class BrowserActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(4, 8, 4, 8)
             setBackgroundColor(getColor(R.color.bg))
-            addView(btnBack, lp(0, 44, 1f, 0, 0, 0))
-            addView(btnForward, lp(0, 44, 1f, 0, 0, 0))
-            addView(btnRefresh, lp(0, 44, 1f, 0, 0, 0))
-            addView(btnHome, lp(0, 44, 1f, 0, 0, 0))
-            addView(btnSniffer, lp(0, 44, 1f, 0, 0, 0))
-            addView(btnTabs, lp(0, 44, 1f, 0, 0, 0))
-            addView(btnSettings, lp(0, 44, 1f, 0, 0, 0))
+            addView(btnBack, lp(0, 44, 1, 0, 0, 0))
+            addView(btnForward, lp(0, 44, 1, 0, 0, 0))
+            addView(btnRefresh, lp(0, 44, 1, 0, 0, 0))
+            addView(btnHome, lp(0, 44, 1, 0, 0, 0))
+            addView(btnSniffer, lp(0, 44, 1, 0, 0, 0))
+            addView(btnTabs, lp(0, 44, 1, 0, 0, 0))
+            addView(btnSettings, lp(0, 44, 1, 0, 0, 0))
         }
 
         // ============ Root layout ============
