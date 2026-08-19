@@ -1,8 +1,11 @@
 name: Build APK
 
+# 推送到 GitHub 后，GitHub 的云服务器会自动编译出 APK（你本机无需装 Android Studio）。
+# 默认出「debug 包」：无需签名、可直接装手机验证。
+# 想出可签名的 release 包，见文件底部「可选：签名 release」说明。
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -21,31 +24,72 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK packages
-        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
-
-      - name: Install Gradle 8.7
+      - name: Install SDK platform & build-tools
         run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip
-          unzip -q gradle-8.7-bin.zip -d "$HOME/gradle-home"
-          echo "$HOME/gradle-home/gradle-8.7/bin" >> "$GITHUB_PATH"
+          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
+          yes | sdkmanager --licenses || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
       # 把官方 xray-core 二进制打进 APK，App 端无需任何 maven 依赖
       - name: Bundle xray-core binary (arm64-v8a)
         run: |
           mkdir -p app/src/main/assets/xray
-          wget -q "https://github.com/XTLS/Xray-core/releases/download/v1.8.4/Xray-android-arm64-v8a.zip" -O /tmp/xray.zip
+          curl -L -o /tmp/xray.zip "https://github.com/XTLS/Xray-core/releases/download/v1.8.4/Xray-android-arm64-v8a.zip"
           unzip -o /tmp/xray.zip -d /tmp/xray-extract/
           cp /tmp/xray-extract/xray app/src/main/assets/xray/xray
           chmod +x app/src/main/assets/xray/xray
           rm -rf /tmp/xray.zip /tmp/xray-extract
           ls -la app/src/main/assets/xray/
 
-      - name: Build debug APK
-        run: gradle assembleDebug --no-daemon
+      # 直接用 Gradle 二进制编译，避免依赖 gradle wrapper 的 jar（本地未生成）
+      - name: Build debug APK (无需签名)
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+        run: |
+          curl -sL https://services.gradle.org/distributions/gradle-8.7-bin.zip -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt
+          /opt/gradle-8.7/bin/gradle clean assembleDebug --no-daemon --no-build-cache
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: proxy-browser-apk
+          path: app/build/outputs/apk/debug/*.apk
+
+# ---------------------------------------------------------------------------
+# 可选：签名 release 包（分发用）
+# 1) 本地生成 keystore：keytool -genkey -v -keystore release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias proxy
+# 2) 仓库 Settings → Secrets 添加：KEYSTORE_BASE64 (base64 release.jks)、KEYSTORE_PASSWORD、KEY_ALIAS、KEY_PASSWORD
+# 3) 取消下面的 job 注释，并把上面 debug 步骤替换成 release 步骤。
+# ---------------------------------------------------------------------------
+#  release:
+#    needs: build
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v4
+#      - uses: actions/setup-java@v4
+#        with:
+#          distribution: temurin
+#          java-version: 17
+#      - uses: android-actions/setup-android@v3
+#      - run: |
+#          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
+#          yes | sdkmanager --licenses || true
+#          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+#      - name: Decode keystore
+#        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/release.jks
+#      - name: Build release APK
+#        env:
+#          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+#          KEYSTORE_PATH: ${{ github.workspace }}/app/release.jks
+#          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+#          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+#          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+#        run: |
+#          curl -sL https://services.gradle.org/distributions/gradle-8.7-bin.zip -o /tmp/gradle.zip
+#          unzip -q /tmp/gradle.zip -d /opt
+#          /opt/gradle-8.7/bin/gradle clean assembleRelease --no-daemon --no-build-cache
+#      - uses: actions/upload-artifact@v4
+#        with:
+#          name: proxy-browser-release-apk
+#          path: app/build/outputs/apk/release/*.apk
