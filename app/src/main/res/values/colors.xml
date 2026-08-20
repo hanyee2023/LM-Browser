@@ -1,25 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- VIA 风格：白底灰次色 + 单色蓝强调，去掉 Material 默认的浓墨色块 -->
     <color name="bg">#FFFFFFFF</color>
-    <color name="bg_subtle">#FFF7F8FA</color>
-    <color name="bg_card">#FFFFFFFF</color>
-    <color name="divider">#FFE5E7EB</color>
-
-    <color name="text_primary">#FF1A1A1A</color>
-    <color name="text_secondary">#FF6B7280</color>
-    <color name="text_tertiary">#FF9CA3AF</color>
-    <color name="text_disabled">#FFCBD5E1</color>
-
-    <color name="accent">#FF3B82F6</color>
-    <color name="accent_pressed">#FF2563EB</color>
-    <color name="accent_subtle">#FFEFF6FF</color>
-
-    <color name="success">#FF10B981</color>
-    <color name="success_subtle">#FFD1FAE5</color>
-    <color name="warn">#FFF59E0B</color>
-    <color name="danger">#FFEF4444</color>
-    <color name="danger_subtle">#FFFEE2E2</color>
-
-    <color name="ripple">#1A3B82F6</color>
+    <color name="surface">#FFF7F7F8</color>
+    <color name="divider">#FFE5E5EA</color>
+    <color name="text_primary">#FF1F1F1F</color>
+    <color name="text_secondary">#FF8A8A8E</color>
+    <color name="accent">#FF2D7FF9</color>
+    <color name="shield_off">#FFB0B3B8</color>
+    <color name="shield_on">#FF22C55E</color>
+    <color name="green">#FF22C55E</color>
+    <color name="orange">#FFF59E0B</color>
+    <color name="red">#FFEF4444</color>
 </resources>
