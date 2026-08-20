@@ -1,101 +1,139 @@
 package com.proxybrowser.app.data
 
-import android.util.Base64
+import android.content.Context
+import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLDecoder
-import java.nio.charset.StandardCharsets
 
-/**
- * 代理节点模型：覆盖 vless / vmess / trojan 主流类型。
- * 字段尽量对齐 xray-core outbound 配置，便于后续直接生成 xray config。
- */
 data class ProxyNode(
     val name: String,
-    val type: Type,            // VLESS / VMESS / TROJAN
+    val type: Type,
     val address: String,
     val port: Int,
-    val uuid: String,          // vmess/vless: id ; trojan: password
-    val alterId: Int = 0,      // vmess 旧式，vless/trojan 忽略
+    val uuid: String = "",
+    val alterId: Int = 0,
     val encryption: String = "none",
-    val security: String = "none", // none / tls
-    val network: String = "tcp",   // tcp / ws / grpc
+    val security: String = "none",
+    val network: String = "tcp",
     val sni: String = "",
     val wsPath: String = "",
     val wsHost: String = "",
-    val grpcServiceName: String = "",
-    var latencyMs: Long = -1,  // 测速结果，-1 未测
-    var valid: Boolean = true
+    var latencyMs: Long = -1,
+    var valid: Boolean = true,
+    /** 来源订阅链接；手动添加的为空字符串，归类到「未分组」 */
+    var subscription: String = ""
 ) {
     enum class Type { VLESS, VMESS, TROJAN }
 }
 
-/**
- * 节点解析工具：单条 URI + 订阅链接（sub://）。
- * 订阅两种常见格式都兼容：
- *   1) base64( JSON 节点数组，v2rayN 风格 )
- *   2) base64( 每行一个 vmess:// / vless:// / trojan:// )
- *   3) 直接就是多行 URI（个别订阅）
- */
-object NodeParser {
+object NodeStore {
+    private const val PREFS = "pb_nodes"
+    private const val KEY_LIST = "list"
+    private const val KEY_ACTIVE = "active"
+    private const val PREFS_SUB = "pb_subs"
+    private const val KEY_SUBS = "subs"
 
-    fun parse(input: String): List<ProxyNode> {
-        val text = input.trim()
-        return when {
-            text.startsWith("sub://") -> parseSubscription(text.removePrefix("sub://"))
-            text.lines().any { it.trim().startsWith("vmess://") || it.trim().startsWith("vless://") || it.trim().startsWith("trojan://") } ->
-                text.lines().mapNotNull { safe { parseSingle(it.trim()) } }
-            else -> parseSubscription(text) // 当作裸 base64 订阅
-        }
-    }
-
-    private fun parseSubscription(b64: String): List<ProxyNode> {
-        val raw = tryDecodeBase64(b64) ?: return emptyList()
-        return when {
-            raw.trim().startsWith("[") || raw.trim().startsWith("{") -> parseV2rayNJson(raw)
-            else -> raw.lines()
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-                .mapNotNull { safe { parseSingle(it) } }
-        }
-    }
-
-    private fun parseV2rayNJson(json: String): List<ProxyNode> {
-        val arr = if (json.trim().startsWith("[")) JSONArray(json) else JSONArray("[$json]")
+    fun load(ctx: Context): MutableList<ProxyNode> {
+        val sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = sp.getString(KEY_LIST, "[]") ?: "[]"
+        val arr = JSONArray(raw)
         val out = mutableListOf<ProxyNode>()
-        for (i in 0 until arr.length()) {
-            val o = arr.optJSONObject(i) ?: continue
-            // 兼容两种字段命名：ps/name, add/host, id/uuid, port
-            val ps = o.optString("ps", o.optString("name", "node-$i"))
-            val add = o.optString("add", o.optString("host", ""))
-            val port = o.optInt("port", 0)
-            val id = o.optString("id", o.optString("uuid", ""))
-            val type = when (o.optString("type", "vmess").lowercase()) {
-                "vless" -> ProxyNode.Type.VLESS
-                "trojan" -> ProxyNode.Type.TROJAN
-                else -> ProxyNode.Type.VMESS
-            }
-            if (add.isEmpty() || port == 0) continue
-            out.add(
-                ProxyNode(
-                    name = ps,
-                    type = type,
-                    address = add,
-                    port = port,
-                    uuid = id,
-                    alterId = o.optInt("aid", 0),
-                    security = o.optString("tls", o.optString("scy", "none")),
-                    network = o.optString("net", "tcp"),
-                    wsPath = o.optString("path", ""),
-                    wsHost = o.optString("host", ""),
-                    sni = o.optString("sni", "")
-                )
-            )
-        }
+        for (i in 0 until arr.length()) out.add(fromJson(arr.getJSONObject(i)))
         return out
     }
 
-    /** 解析单条 vless:// | vmess:// | trojan:// */
+    fun save(ctx: Context, nodes: List<ProxyNode>) {
+        val arr = JSONArray()
+        nodes.forEach { arr.put(toJson(it)) }
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_LIST, arr.toString()).apply()
+    }
+
+    fun setActive(ctx: Context, node: ProxyNode?) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_ACTIVE, node?.let { keyOf(it) } ?: "").apply()
+    }
+
+    fun getActive(ctx: Context): ProxyNode? {
+        val k = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_ACTIVE, "") ?: return null
+        return load(ctx).firstOrNull { keyOf(it) == k }
+    }
+
+    fun keyOf(n: ProxyNode) = "${n.name}|${n.address}:${n.port}|${n.subscription}"
+
+    // ============ 订阅链接管理 ============
+    fun loadSubs(ctx: Context): MutableList<String> {
+        val sp = ctx.getSharedPreferences(PREFS_SUB, Context.MODE_PRIVATE)
+        val raw = sp.getString(KEY_SUBS, "[]") ?: "[]"
+        val arr = JSONArray(raw)
+        val out = mutableListOf<String>()
+        for (i in 0 until arr.length()) out.add(arr.getString(i))
+        return out
+    }
+
+    fun saveSubs(ctx: Context, subs: List<String>) {
+        val arr = JSONArray()
+        subs.forEach { arr.put(it) }
+        ctx.getSharedPreferences(PREFS_SUB, Context.MODE_PRIVATE)
+            .edit().putString(KEY_SUBS, arr.toString()).apply()
+    }
+
+    fun addSub(ctx: Context, url: String) {
+        val list = loadSubs(ctx).toMutableList()
+        if (!list.contains(url)) list.add(url)
+        saveSubs(ctx, list)
+    }
+
+    /** 删除某个订阅链接，以及所有归属于它的节点 */
+    fun deleteSub(ctx: Context, url: String) {
+        val subs = loadSubs(ctx).toMutableList()
+        subs.remove(url)
+        saveSubs(ctx, subs)
+        val nodes = load(ctx).filter { it.subscription != url }
+        save(ctx, nodes)
+        val active = getActive(ctx)
+        if (active != null && active.subscription == url) setActive(ctx, null)
+    }
+
+    private fun toJson(n: ProxyNode) = JSONObject().apply {
+        put("name", n.name)
+        put("type", n.type.name)
+        put("address", n.address)
+        put("port", n.port)
+        put("uuid", n.uuid)
+        put("alterId", n.alterId)
+        put("encryption", n.encryption)
+        put("security", n.security)
+        put("network", n.network)
+        put("sni", n.sni)
+        put("wsPath", n.wsPath)
+        put("wsHost", n.wsHost)
+        put("latencyMs", n.latencyMs)
+        put("valid", n.valid)
+        put("subscription", n.subscription)
+    }
+
+    private fun fromJson(o: JSONObject) = ProxyNode(
+        name = o.getString("name"),
+        type = ProxyNode.Type.valueOf(o.getString("type")),
+        address = o.getString("address"),
+        port = o.getInt("port"),
+        uuid = o.optString("uuid", ""),
+        alterId = o.optInt("alterId"),
+        encryption = o.optString("encryption", "none"),
+        security = o.optString("security", "none"),
+        network = o.optString("network", "tcp"),
+        sni = o.optString("sni", ""),
+        wsPath = o.optString("wsPath", ""),
+        wsHost = o.optString("wsHost", ""),
+        latencyMs = o.optLong("latencyMs", -1),
+        valid = o.optBoolean("valid", true),
+        subscription = o.optString("subscription", "")
+    )
+}
+
+object NodeParser {
     fun parseSingle(uri: String): ProxyNode? {
         return when {
             uri.startsWith("vless://") -> parseVless(uri)
@@ -105,97 +143,112 @@ object NodeParser {
         }
     }
 
-    private fun parseVless(uri: String): ProxyNode {
-        // vless://uuid@host:port?encryption=none&security=tls&type=ws&path=...&host=...#name
-        val withoutScheme = uri.removePrefix("vless://")
-        val (authority, queryAndFrag) = splitQueryFragment(withoutScheme)
-        val (userInfo, hostPort) = authority.split("@", limit = 2).let {
-            if (it.size == 2) it[0] to it[1] else "" to it[0]
+    fun parse(body: String): List<ProxyNode> {
+        val out = mutableListOf<ProxyNode>()
+        // 逐行尝试；也兼容整段 base64
+        for (line in body.lines()) {
+            val t = line.trim()
+            if (t.isEmpty() || t.startsWith("#") || t.startsWith("//")) continue
+            parseSingle(t)?.let { out.add(it) }
         }
-        val (host, port) = hostPort.split(":", limit = 2).let { it[0] to (it.getOrNull(1)?.toIntOrNull() ?: 443) }
-        val q = parseQuery(queryAndFrag)
-        val frag = queryAndFrag.substringAfter('#', "").let { if (it.isEmpty()) "" else URLDecoder.decode(it, "UTF-8") }
-        return ProxyNode(
-            name = frag.ifEmpty { "$host:$port" },
-            type = ProxyNode.Type.VLESS,
-            address = host,
-            port = port,
-            uuid = userInfo,
-            encryption = q["encryption"] ?: "none",
-            security = q["security"] ?: "none",
-            network = q["type"] ?: "tcp",
-            sni = q["sni"] ?: q["peer"] ?: host,
-            wsPath = q["path"] ?: "",
-            wsHost = q["host"] ?: ""
-        )
+        return out
     }
 
-    private fun parseTrojan(uri: String): ProxyNode {
-        // trojan://password@host:port?security=tls&sni=...&type=ws&path=...#name
-        val withoutScheme = uri.removePrefix("trojan://")
-        val (authority, queryAndFrag) = splitQueryFragment(withoutScheme)
-        val (userInfo, hostPort) = authority.split("@", limit = 2).let {
-            if (it.size == 2) it[0] to it[1] else "" to it[0]
-        }
-        val (host, port) = hostPort.split(":", limit = 2).let { it[0] to (it.getOrNull(1)?.toIntOrNull() ?: 443) }
-        val q = parseQuery(queryAndFrag)
-        val frag = queryAndFrag.substringAfter('#', "").let { if (it.isEmpty()) "" else URLDecoder.decode(it, "UTF-8") }
-        return ProxyNode(
-            name = frag.ifEmpty { "$host:$port" },
-            type = ProxyNode.Type.TROJAN,
-            address = host,
-            port = port,
-            uuid = userInfo,
-            security = q["security"] ?: "tls",
-            network = q["type"] ?: "tcp",
-            sni = q["sni"] ?: host,
-            wsPath = q["path"] ?: "",
-            wsHost = q["host"] ?: ""
-        )
+    private fun decode(s: String): String = runCatching { URLDecoder.decode(s, "UTF-8") }.getOrDefault(s)
+
+    private fun parseVless(uri: String): ProxyNode? {
+        return runCatching {
+            val noScheme = uri.removePrefix("vless://")
+            val hashIdx = noScheme.indexOf('#')
+            val name = if (hashIdx >= 0) decode(noScheme.substring(hashIdx + 1)) else ""
+            val core = if (hashIdx >= 0) noScheme.substring(0, hashIdx) else noScheme
+            val qIdx = core.indexOf('?')
+            val query = if (qIdx >= 0) core.substring(qIdx + 1) else ""
+            val authority = if (qIdx >= 0) core.substring(0, qIdx) else core
+            val atIdx = authority.indexOf('@')
+            val uuid = if (atIdx >= 0) authority.substring(0, atIdx) else authority
+            val hp = if (atIdx >= 0) authority.substring(atIdx + 1) else authority
+            val host = hp.substringBefore(':')
+            val port = hp.substringAfter(':', "443").toIntOrNull() ?: 443
+
+            var security = ""
+            var sni = ""
+            var network = "tcp"
+            var wsPath = ""
+            var wsHost = ""
+            var encryption = "none"
+            for (kv in query.split('&')) {
+                val eq = kv.indexOf('=')
+                if (eq < 0) continue
+                val k = kv.substring(0, eq)
+                val v = decode(kv.substring(eq + 1))
+                when (k) {
+                    "security" -> security = v
+                    "sni" -> sni = v
+                    "type" -> network = v
+                    "path" -> wsPath = v
+                    "host" -> wsHost = v
+                    "encryption" -> encryption = v
+                }
+            }
+            val finalName = name.ifEmpty { "$host:$port" }
+            ProxyNode(
+                name = finalName, type = ProxyNode.Type.VLESS, address = host, port = port,
+                uuid = uuid, encryption = encryption, security = security,
+                network = network, sni = sni, wsPath = wsPath, wsHost = wsHost
+            )
+        }.getOrNull()
     }
 
-    private fun parseVmess(uri: String): ProxyNode {
-        // vmess://<base64 of json>
-        val b64 = uri.removePrefix("vmess://")
-        val json = tryDecodeBase64(b64) ?: throw IllegalArgumentException("vmess base64 解码失败")
-        val o = JSONObject(json)
-        return ProxyNode(
-            name = o.optString("ps", "vmess"),
-            type = ProxyNode.Type.VMESS,
-            address = o.optString("add", ""),
-            port = o.optInt("port", 0),
-            uuid = o.optString("id", ""),
-            alterId = o.optInt("aid", 0),
-            security = o.optString("scy", "auto"),
-            network = o.optString("net", "tcp"),
-            sni = o.optString("sni", o.optString("host", "")),
-            wsPath = o.optString("path", ""),
-            wsHost = o.optString("host", "")
-        )
+    private fun parseTrojan(uri: String): ProxyNode? {
+        return runCatching {
+            val noScheme = uri.removePrefix("trojan://")
+            val hashIdx = noScheme.indexOf('#')
+            val name = if (hashIdx >= 0) decode(noScheme.substring(hashIdx + 1)) else ""
+            val core = if (hashIdx >= 0) noScheme.substring(0, hashIdx) else noScheme
+            val qIdx = core.indexOf('?')
+            val query = if (qIdx >= 0) core.substring(qIdx + 1) else ""
+            val authority = if (qIdx >= 0) core.substring(0, qIdx) else core
+            val atIdx = authority.indexOf('@')
+            val password = if (atIdx >= 0) authority.substring(0, atIdx) else authority
+            val hp = if (atIdx >= 0) authority.substring(atIdx + 1) else authority
+            val host = hp.substringBefore(':')
+            val port = hp.substringAfter(':', "443").toIntOrNull() ?: 443
+            var sni = ""
+            for (kv in query.split('&')) {
+                val eq = kv.indexOf('=')
+                if (eq < 0) continue
+                if (kv.substring(0, eq) == "sni") sni = decode(kv.substring(eq + 1))
+            }
+            val finalName = name.ifEmpty { "$host:$port" }
+            ProxyNode(
+                name = finalName, type = ProxyNode.Type.TROJAN, address = host, port = port,
+                uuid = password, sni = sni, security = "tls"
+            )
+        }.getOrNull()
     }
 
-    // ---------- 小工具 ----------
-
-    private fun splitQueryFragment(s: String): Pair<String, String> {
-        val hash = s.indexOf('#')
-        val body = if (hash >= 0) s.substring(0, hash) else s
-        val q = body.indexOf('?')
-        return if (q >= 0) body.substring(0, q) to body.substring(q) else body to ""
+    private fun parseVmess(uri: String): ProxyNode? {
+        return runCatching {
+            val b64 = uri.removePrefix("vmess://")
+            val decoded = String(android.util.Base64.decode(b64, android.util.Base64.DEFAULT))
+            val o = JSONObject(decoded)
+            val net = o.optString("net", "tcp")
+            val tls = o.optString("tls", "")
+            val security = if (tls.equals("tls", true) || tls.equals("reality", true)) "tls" else "none"
+            ProxyNode(
+                name = o.optString("ps", "vmess"),
+                type = ProxyNode.Type.VMESS,
+                address = o.optString("add", ""),
+                port = o.optInt("port", 0),
+                uuid = o.optString("id", ""),
+                alterId = o.optInt("aid", 0),
+                network = net,
+                sni = o.optString("sni", ""),
+                wsPath = o.optString("path", ""),
+                wsHost = o.optString("host", ""),
+                security = security
+            )
+        }.getOrNull()
     }
-
-    private fun parseQuery(qf: String): Map<String, String> {
-        val q = if (qf.startsWith("?")) qf.substring(1) else qf
-        return q.split("&").filter { it.isNotEmpty() }.associate {
-            val (k, v) = it.split("=", limit = 2).let { p -> p[0] to (p.getOrNull(1) ?: "") }
-            URLDecoder.decode(k, "UTF-8") to URLDecoder.decode(v, "UTF-8")
-        }
-    }
-
-    private fun tryDecodeBase64(s: String): String? = runCatching {
-        val norm = s.replace("-", "+").replace("_", "/")
-            .let { if (it.length % 4 != 0) it.padEnd(it.length + (4 - it.length % 4), '=') else it }
-        String(Base64.decode(norm, Base64.DEFAULT), StandardCharsets.UTF_8)
-    }.getOrNull()
-
-    private inline fun <T> safe(block: () -> T): T? = runCatching(block).getOrNull()
 }
