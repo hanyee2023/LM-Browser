@@ -3,7 +3,7 @@ package com.proxybrowser.app.core
 import android.content.Context
 
 object VideoSniffer {
-    const val HOOK_JS = """
+    val HOOK_JS = """
 (function(){
   var orig = window.open;
   window.open = function(u,t){
@@ -34,4 +34,9 @@ object VideoSniffer {
     }
 
     fun getAll(): List<Media> = items.toList()
+
+    /** 别名，供 SnifferActivity 使用 */
+    fun all(): List<Media> = items.toList()
+
+    fun clear() { items.clear() }
 }
