@@ -2,181 +2,164 @@ package com.proxybrowser.app.ui
 
 import android.content.Intent
 import android.os.Bundle
-import android.view.LayoutInflater
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
-import android.widget.EditText
+import android.widget.CompoundButton
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.proxybrowser.app.R
-import com.proxybrowser.app.core.AdBlocker
 import com.proxybrowser.app.core.Settings
-import com.proxybrowser.app.core.UserScriptEngine
 
-/**
- * 设置页：开关 + 用户脚本编辑入口 + 自定义 UA。
- */
 class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_settings)
+        val ctx = this
 
-        findViewById<Button>(R.id.btnBack).setOnClickListener { finish() }
-
-        // 广告拦截
-        val swAdblock = findViewById<Button>(R.id.swAdblock)
-        val renderAd = { enabled: Boolean ->
-            swAdblock.text = if (enabled) "● 已启用" else "○ 已关闭"
-            swAdblock.setBackgroundResource(if (enabled) R.drawable.bg_btn_primary else R.drawable.bg_btn_secondary)
+        // 顶部栏
+        val back = ImageView(ctx).apply {
+            setImageResource(R.drawable.ic_back)
+            setBackgroundResource(R.drawable.bg_btn_ghost)
+            val p = (10 * resources.displayMetrics.density).toInt()
+            setPadding(p, p, p, p)
+            val s = dp(36)
+            layoutParams = LinearLayout.LayoutParams(s, s)
+            setOnClickListener { finish() }
         }
-        renderAd(Settings.isAdblock(this))
-        swAdblock.setOnClickListener {
-            val next = !Settings.isAdblock(this)
-            Settings.setAdblock(this, next)
-            AdBlocker.setEnabled(next)
-            renderAd(next)
+        val title = TextView(ctx).apply {
+            text = "设置"
+            textSize = 18f
+            setTextColor(getColor(R.color.text_primary))
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-
-        // 油猴
-        val swScript = findViewById<Button>(R.id.swScript)
-        val renderScript = { enabled: Boolean ->
-            swScript.text = if (enabled) "● 已启用" else "○ 已关闭"
-            swScript.setBackgroundResource(if (enabled) R.drawable.bg_btn_primary else R.drawable.bg_btn_secondary)
-        }
-        renderScript(Settings.isUserScript(this))
-        swScript.setOnClickListener {
-            val next = !Settings.isUserScript(this)
-            Settings.setUserScript(this, next)
-            renderScript(next)
+        val topBar = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(8, 10, 16, 10)
+            addView(back)
+            addView(title)
         }
 
-        // 嗅探
-        val swSniffer = findViewById<Button>(R.id.swSniffer)
-        val renderSniffer = { enabled: Boolean ->
-            swSniffer.text = if (enabled) "● 已启用" else "○ 已关闭"
-            swSniffer.setBackgroundResource(if (enabled) R.drawable.bg_btn_primary else R.drawable.bg_btn_secondary)
+        val scroll = ScrollView(ctx)
+        val list = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(8, 8, 8, 16)
         }
-        renderSniffer(Settings.isSniffer(this))
-        swSniffer.setOnClickListener {
-            val next = !Settings.isSniffer(this)
-            Settings.setSniffer(this, next)
-            renderSniffer(next)
-        }
+        scroll.addView(list)
 
-        // DoNotTrack
-        val swDnt = findViewById<Button>(R.id.swDnt)
-        val renderDnt = { enabled: Boolean ->
-            swDnt.text = if (enabled) "● 已启用" else "○ 已关闭"
-            swDnt.setBackgroundResource(if (enabled) R.drawable.bg_btn_primary else R.drawable.bg_btn_secondary)
-        }
-        renderDnt(Settings.isDnt(this))
-        swDnt.setOnClickListener {
-            val next = !Settings.isDnt(this)
-            Settings.setDnt(this, next)
-            renderDnt(next)
-        }
-
-        // 管理用户脚本
-        findViewById<Button>(R.id.btnScripts).setOnClickListener { showScripts() }
-
-        // 自定义 UA
-        findViewById<Button>(R.id.btnUa).setOnClickListener {
-            val et = EditText(this).apply {
-                setText(Settings.userAgent(this@SettingsActivity))
-                hint = "留空 = 默认 UA"
-                minHeight = (60 * resources.displayMetrics.density).toInt()
-            }
-            AlertDialog.Builder(this)
-                .setTitle("自定义 User-Agent")
-                .setView(et)
-                .setPositiveButton("保存") { _, _ ->
-                    Settings.setUserAgent(this@SettingsActivity, et.text.toString().trim())
-                    Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
+        // 通用设置（搜索引擎）
+        list.addView(navRow("通用设置") {
+            val engines = Settings.SEARCH_ENGINES
+            val names = engines.map { it.first }.toTypedArray()
+            var checked = engines.indexOfFirst { it.second == Settings.searchEngine(ctx) }.coerceAtLeast(0)
+            AlertDialog.Builder(ctx)
+                .setTitle("默认搜索引擎")
+                .setSingleChoiceItems(names, checked) { d, which -> checked = which }
+                .setPositiveButton("确定") { d, _ ->
+                    Settings.setSearchEngine(ctx, engines[checked].second)
+                    Toast.makeText(ctx, "已设为：${engines[checked].first}", Toast.LENGTH_SHORT).show()
+                    d.dismiss()
                 }
                 .setNegativeButton("取消", null)
                 .show()
-        }
-    }
+        })
 
-    /**
-     * 用户脚本管理（极简）：显示已注册脚本，可编辑 / 启用 / 删除 / 添加。
-     * 编辑器就是多行输入框，写完保存。
-     */
-    private fun showScripts() {
-        val list = UserScriptEngine.loadAll(this)
-        val titles = mutableListOf<String>()
-        titles.add("+ 新增脚本")
-        list.forEach { titles.add(if (it.enabled) "● ${it.name}" else "○ ${it.name}") }
-        AlertDialog.Builder(this)
-            .setTitle("用户脚本")
-            .setItems(titles.toTypedArray()) { _, which ->
-                if (which == 0) {
-                    editScript(null)
-                } else {
-                    val s = list[which - 1]
-                    AlertDialog.Builder(this)
-                        .setTitle(s.name)
-                        .setItems(arrayOf("编辑", if (s.enabled) "禁用" else "启用", "删除"))
-                        { _, idx ->
-                            when (idx) {
-                                0 -> editScript(s)
-                                1 -> {
-                                    UserScriptEngine.setEnabled(this, s.name, !s.enabled)
-                                    Toast.makeText(this, "已更新", Toast.LENGTH_SHORT).show()
-                                }
-                                2 -> {
-                                    UserScriptEngine.remove(this, s.name)
-                                    Toast.makeText(this, "已删除", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        }
-                        .setNegativeButton("关闭", null)
-                        .show()
-                }
-            }
-            .setNegativeButton("关闭", null)
-            .show()
-    }
+        // 代理设置 -> ProxySettingsActivity
+        list.addView(navRow("代理设置") {
+            startActivity(Intent(ctx, ProxySettingsActivity::class.java))
+        })
 
-    private fun editScript(s: UserScriptEngine.Script?) {
-        val nameView = EditText(this).apply {
-            hint = "脚本名（如 解除B站限制）"
-            setText(s?.name ?: "")
-        }
-        val codeView = EditText(this).apply {
-            hint = "// ==UserScript== ... code ... // ==/UserScript==\n// @match https://*.example.com/*"
-            setText(s?.raw ?: "/* 在此粘贴 .user.js 完整内容（含 // ==UserScript== 头） */")
-            minLines = 12
-            maxLines = 24
-            setSingleLine(false)
-        }
-        val container = LinearLayout(this).apply {
+        // 广告拦截（开关）
+        list.addView(toggleRow("广告拦截", Settings.isAdBlockEnabled(ctx)) { _, on ->
+            Settings.setAdBlockEnabled(ctx, on)
+        })
+        // 用户脚本（开关）
+        list.addView(toggleRow("用户脚本", Settings.isUserScript(ctx)) { _, on ->
+            Settings.setUserScript(ctx, on)
+            Toast.makeText(ctx, if (on) "用户脚本已开启（需重启页面生效）" else "用户脚本已关闭", Toast.LENGTH_SHORT).show()
+        })
+        // 视频嗅探（开关）
+        list.addView(toggleRow("视频嗅探", Settings.isSniffer(ctx)) { _, on ->
+            Settings.setSniffer(ctx, on)
+        })
+        // 书签管理（占位）
+        list.addView(navRow("书签管理") { Toast.makeText(ctx, "书签管理：敬请期待", Toast.LENGTH_SHORT).show() })
+        // 下载管理（占位）
+        list.addView(navRow("下载管理") { Toast.makeText(ctx, "下载管理：敬请期待", Toast.LENGTH_SHORT).show() })
+        // 隐私（DNT 开关）
+        list.addView(toggleRow("隐私（禁止追踪 DNT）", Settings.isDnt(ctx)) { _, on ->
+            Settings.setDnt(ctx, on)
+        })
+        // 数据管理（占位）
+        list.addView(navRow("数据管理") { Toast.makeText(ctx, "数据管理：敬请期待", Toast.LENGTH_SHORT).show() })
+
+        val root = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(48, 24, 48, 24)
-            addView(nameView)
-            addView(codeView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = 24
+            setBackgroundColor(getColor(R.color.bg))
+            addView(topBar)
+            addView(View(ctx).apply {
+                setBackgroundColor(getColor(R.color.divider))
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
             })
+            addView(scroll)
         }
-        AlertDialog.Builder(this)
-            .setTitle(if (s == null) "新增脚本" else "编辑：${s.name}")
-            .setView(container)
-            .setPositiveButton("保存") { _, _ ->
-                val name = nameView.text.toString().trim()
-                val code = codeView.text.toString()
-                if (name.isEmpty() || code.isBlank()) {
-                    Toast.makeText(this, "名字 + 代码不能为空", Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-                UserScriptEngine.addOrReplace(this, name, code, true)
-                Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("取消", null)
-            .show()
+        setContentView(root)
     }
+
+    private fun navRow(name: String, onClick: () -> Unit): View {
+        val ctx = this
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(16, 18, 16, 18)
+            setBackgroundResource(R.drawable.bg_btn_ghost)
+        }
+        val tv = TextView(ctx).apply {
+            text = name
+            textSize = 16f
+            setTextColor(getColor(R.color.text_primary))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val chevron = TextView(ctx).apply {
+            text = "›"
+            textSize = 22f
+            setTextColor(getColor(R.color.text_secondary))
+        }
+        row.addView(tv)
+        row.addView(chevron)
+        row.setOnClickListener { onClick() }
+        return row
+    }
+
+    private fun toggleRow(name: String, initial: Boolean, onChange: (CompoundButton, Boolean) -> Unit): View {
+        val ctx = this
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(16, 18, 16, 18)
+        }
+        val tv = TextView(ctx).apply {
+            text = name
+            textSize = 16f
+            setTextColor(getColor(R.color.text_primary))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val sw = Switch(ctx).apply {
+            isChecked = initial
+            setOnCheckedChangeListener(onChange)
+        }
+        row.addView(tv)
+        row.addView(sw)
+        return row
+    }
+
+    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 }
