@@ -1,0 +1,57 @@
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+
+android {
+    namespace = "com.proxybrowser.app"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "com.example.proxybrowser"
+        minSdk = 24          // Android 7.0，覆盖绝大多数仍活跃设备
+        targetSdk = 34
+        versionCode = 1
+        versionName = "0.1.0"
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            // 正式签名在 CI（.github/workflows/build.yml）用 Secrets 注入；
+            // 本地验证请用 assembleDebug，无需签名即可安装。
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+    buildFeatures {
+        viewBinding = true
+    }
+}
+
+dependencies {
+    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("com.google.android.material:material:1.12.0")
+    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+    implementation("androidx.webkit:webkit:1.11.0") // ProxyController 等
+
+    // v2ray 核心：骨架用本地 libv2ray 桩（app/src/main/java/libv2ray/）保证可编译。
+    // 启用真实代理时：删除 app/src/main/java/libv2ray/ 目录，取消下行注释，
+    // 并把坐标换成 v2rayNG 发布的 libv2ray aar（版本以发布页为准）。
+    // implementation("io.github.v2fly:libv2ray:$libv2ray_version")
+
+    // JSON 解析（订阅/脚本元数据）
+    implementation("org.json:json:20240303")
+}
