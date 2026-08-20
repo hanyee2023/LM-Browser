@@ -72,6 +72,10 @@ object V2RayManager {
     }
 
     fun isRunning(): Boolean = running && process?.isAlive == true
+
+    /** 预热：把 assets 里的 xray 二进制解压到 filesDir 并赋可执行权限 */
+    fun ensureInstalled(ctx: Context): Boolean = extractXray(ctx) != null
+
     fun activeNode(): ProxyNode? = activeNode
     fun port(): Int = PORT
 
