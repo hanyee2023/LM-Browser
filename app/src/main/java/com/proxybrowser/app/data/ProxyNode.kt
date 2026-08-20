@@ -5,7 +5,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.net.URLDecoder
-import java.nio.charset.Charsets
 import java.util.zip.GZIPInputStream
 
 data class ProxyNode(
