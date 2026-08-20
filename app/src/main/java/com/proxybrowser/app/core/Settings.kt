@@ -2,73 +2,63 @@ package com.proxybrowser.app.core
 
 import android.content.Context
 
-/**
- * 通用设置：所有开关 / 用户偏好集中保存。
- * 不直接读取 SharedPreferences，由各模块自行 refresh。
- */
 object Settings {
 
     private const val PREFS = "pb_settings"
 
-    // 键
-    private const val K_ADBLOCK = "adblock"
-    private const val K_USERSCRIPT = "userscript"
-    private const val K_SNIFFER = "sniffer"
-    private const val K_DARK = "dark"
-    private const val K_DNT = "dnt"
-    private const val K_UA = "ua"
+    fun saveBoolean(ctx: Context, key: String, value: Boolean) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(key, value).apply()
+    }
 
-    // 默认值
-    fun adblockDefault() = true
-    fun userscriptDefault() = true
-    fun snifferDefault() = true
-    fun darkDefault() = false
-    fun dntDefault() = true
+    fun loadBoolean(ctx: Context, key: String, default: Boolean = false) =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(key, default)
 
-    fun isAdblock(ctx: Context): Boolean =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(K_ADBLOCK, adblockDefault())
+    fun saveString(ctx: Context, key: String, value: String) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(key, value).apply()
+    }
 
-    fun setAdblock(ctx: Context, on: Boolean) =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putBoolean(K_ADBLOCK, on).apply()
+    fun loadString(ctx: Context, key: String, default: String = "") =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(key, default) ?: default
 
-    fun isUserScript(ctx: Context): Boolean =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(K_USERSCRIPT, userscriptDefault())
+    // ============ Proxy settings ============
+    fun isProxyEnabled(ctx: Context) = loadBoolean(ctx, "proxy_enabled", false)
+    fun setProxyEnabled(ctx: Context, enabled: Boolean) = saveBoolean(ctx, "proxy_enabled", enabled)
 
-    fun setUserScript(ctx: Context, on: Boolean) =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putBoolean(K_USERSCRIPT, on).apply()
+    // ============ Search engine ============
+    val SEARCH_ENGINES = listOf(
+        "百度" to "https://www.baidu.com/s?wd=",
+        "Google" to "https://www.google.com/search?q=",
+        "Bing" to "https://www.bing.com/search?q=",
+        "DuckDuckGo" to "https://duckduckgo.com/?q="
+    )
 
-    fun isSniffer(ctx: Context): Boolean =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(K_SNIFFER, snifferDefault())
+    fun searchEngine(ctx: Context): String {
+        val saved = loadString(ctx, "search_engine", "")
+        return if (saved.isNotEmpty()) saved else SEARCH_ENGINES[0].second
+    }
+    fun searchEngineName(ctx: Context): String {
+        val cur = searchEngine(ctx)
+        return SEARCH_ENGINES.firstOrNull { it.second == cur }?.first ?: "百度"
+    }
+    fun setSearchEngine(ctx: Context, url: String) = saveString(ctx, "search_engine", url)
 
-    fun setSniffer(ctx: Context, on: Boolean) =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putBoolean(K_SNIFFER, on).apply()
+    // ============ Features toggles ============
+    fun isAdBlockEnabled(ctx: Context) = loadBoolean(ctx, "ad_block_enabled", true)
+    fun setAdBlockEnabled(ctx: Context, enabled: Boolean) = saveBoolean(ctx, "ad_block_enabled", enabled)
 
-    fun isDark(ctx: Context): Boolean =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(K_DARK, darkDefault())
+    fun isUserScript(ctx: Context) = loadBoolean(ctx, "user_script_enabled", false)
+    fun setUserScript(ctx: Context, enabled: Boolean) = saveBoolean(ctx, "user_script_enabled", enabled)
 
-    fun setDark(ctx: Context, on: Boolean) =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putBoolean(K_DARK, on).apply()
+    fun isSniffer(ctx: Context) = loadBoolean(ctx, "sniffer_enabled", false)
+    fun setSniffer(ctx: Context, enabled: Boolean) = saveBoolean(ctx, "sniffer_enabled", enabled)
 
-    fun isDnt(ctx: Context): Boolean =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(K_DNT, dntDefault())
+    // ============ Privacy ============
+    fun isDnt(ctx: Context) = loadBoolean(ctx, "dnt_enabled", true)
+    fun setDnt(ctx: Context, enabled: Boolean) = saveBoolean(ctx, "dnt_enabled", enabled)
 
-    fun setDnt(ctx: Context, on: Boolean) =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putBoolean(K_DNT, on).apply()
-
-    /** 自定义 UA（空字符串=用默认） */
-    fun userAgent(ctx: Context): String =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(K_UA, "") ?: ""
-
-    fun setUserAgent(ctx: Context, v: String) =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString(K_UA, v).apply()
-
-    fun searchEngine(): String =
-        // 默认 Google 搜索（结果丰富）；可改成 baidu / duckduckgo / bing
-        "https://www.google.com/search?q="
+    // ============ UserAgent ============
+    fun userAgent(ctx: Context) = loadString(ctx, "user_agent", "")
+    fun setUserAgent(ctx: Context, ua: String) = saveString(ctx, "user_agent", ua)
 }
