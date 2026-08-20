@@ -3,8 +3,6 @@ package com.proxybrowser.app.core
 import android.content.Context
 import android.os.Build
 import android.util.Log
-import android.webkit.ProxyConfig
-import android.webkit.ProxyController
 import com.proxybrowser.app.data.ProxyNode
 import org.json.JSONArray
 import org.json.JSONObject
@@ -14,6 +12,7 @@ import java.io.IOException
 import java.io.InputStreamReader
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 
 object V2RayManager {
@@ -108,22 +107,42 @@ object V2RayManager {
         true
     } catch (_: Exception) { false }
 
-    @Synchronized private fun applySystemProxy(ctx: Context) {
+    /**
+     * 通过系统 WebView 代理（ProxyController，API 28+）把浏览器流量路由到本地 SOCKS5。
+     * 用反射调用，避免某些构建环境下 android.webkit.ProxyController 在编译期不可见。
+     */
+    @Suppress("PrivateApi", "DiscouragedPrivateApi")
+    private fun applySystemProxy(ctx: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
         try {
-            val cfg = ProxyConfig.Builder()
-                .addProxyRule("socks5://127.0.0.1:$PORT")
-                .build()
-            ProxyController.getInstance().setProxyOverride(cfg, executor) {}
+            val ctrlCls = Class.forName("android.webkit.ProxyController")
+            val controller = ctrlCls.getMethod("getInstance").invoke(null)!!
+            val builderCls = Class.forName("android.webkit.ProxyConfig\$Builder")
+            val builder = builderCls.getConstructor().newInstance()
+            builderCls.getMethod("addProxyRule", String::class.java)
+                .invoke(builder, "socks5://127.0.0.1:$PORT")
+            val config = builderCls.getMethod("build").invoke(builder)!!
+            val listener = Runnable { }
+            ctrlCls.getMethod(
+                "setProxyOverride",
+                Class.forName("android.webkit.ProxyConfig"),
+                Executor::class.java,
+                Runnable::class.java
+            ).invoke(controller, config, executor, listener)
         } catch (e: Exception) {
             Log.e(TAG, "applySystemProxy failed", e)
         }
     }
 
-    @Synchronized private fun clearSystemProxy() {
+    @Suppress("PrivateApi", "DiscouragedPrivateApi")
+    private fun clearSystemProxy() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
         try {
-            ProxyController.getInstance().clearProxyOverride(executor) {}
+            val ctrlCls = Class.forName("android.webkit.ProxyController")
+            val controller = ctrlCls.getMethod("getInstance").invoke(null)!!
+            val listener = Runnable { }
+            ctrlCls.getMethod("clearProxyOverride", Executor::class.java, Runnable::class.java)
+                .invoke(controller, executor, listener)
         } catch (e: Exception) {
             Log.e(TAG, "clearSystemProxy failed", e)
         }
