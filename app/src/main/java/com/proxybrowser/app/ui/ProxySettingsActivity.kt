@@ -26,7 +26,6 @@ import com.proxybrowser.app.data.NodeStore
 import com.proxybrowser.app.data.ProxyNode
 import java.net.HttpURLConnection
 import java.net.URL
-import java.nio.charset.Charsets
 import java.util.zip.GZIPInputStream
 import java.util.concurrent.Executors
 
