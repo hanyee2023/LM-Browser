@@ -325,6 +325,17 @@ class BrowserActivity : AppCompatActivity() {
         }
     }
 
+    /** 主页底部状态文字随真实代理状态更新（之前一直显示「代理未开启」） */
+    private fun reflectProxyOnHome() {
+        val w = activeWebView() ?: return
+        if (activeTab()?.isHome != true) return
+        val ok = V2RayManager.isRunning()
+        val dot = if (ok) "#22C55E" else "#c7c7cc"
+        val text = if (ok) "代理已开启（盾牌为绿色）" else "代理未开启"
+        val js = "(function(){var d=document.getElementById('proxyDot');var t=document.getElementById('proxyDetail');if(d)d.style.background='$dot';if(t)t.textContent='$text';})()"
+        w.evaluateJavascript(js, null)
+    }
+
     private fun toggleProxy() {
         if (V2RayManager.isRunning()) {
             V2RayManager.stop()
@@ -470,6 +481,7 @@ class BrowserActivity : AppCompatActivity() {
         AdBlocker.loadEnabled(this)
         updateShield()
         refreshNavButtons()
+        reflectProxyOnHome()
     }
 
     override fun onDestroy() {
@@ -501,10 +513,14 @@ class BrowserActivity : AppCompatActivity() {
             ) return null
             // 去广告：无论是否走代理都拦截
             if (AdBlocker.shouldBlock(url)) return AdBlocker.emptyResponse()
-            // 代理开启时通过 SOCKS 转发；关闭时直接加载
+            // 代理关闭时直接加载
             if (!V2RayManager.isRunning()) return null
-            if ((request.method ?: "GET").equals("GET", true).not()) return null
-            return try { fetchViaSocks(request, url) } catch (e: Exception) { null }
+            // API 28+ 由系统 WebView 代理（ProxyController）接管，这里不再做 SOCKS 转发
+            if (!V2RayManager.proxyHandledBySystem()) {
+                if ((request.method ?: "GET").equals("GET", true).not()) return null
+                return try { fetchViaSocks(request, url) } catch (e: Exception) { null }
+            }
+            return null
         }
 
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
@@ -520,6 +536,7 @@ class BrowserActivity : AppCompatActivity() {
         override fun onPageFinished(view: WebView, url: String?) {
             super.onPageFinished(view, url)
             if (tab.id == activeTabId) refreshNavButtons()
+            if (tab.isHome) reflectProxyOnHome()
             if (Settings.isUserScript(this@BrowserActivity)) {
                 val scripts = UserScriptEngine.loadAll(this@BrowserActivity)
                 val matched = UserScriptEngine.matches(url ?: "", scripts)
