@@ -6,7 +6,7 @@ import org.json.JSONObject
 
 /**
  * 节点持久化：存到 SharedPreferences（JSON），重启不丢。
- * 同时记录“当前选中节点”的 key 与订阅链接列表。
+ * 同时记录“当前选中节点”的 key 与订阅链接列表（含订阅名称）。
  */
 object NodeStore {
 
@@ -15,6 +15,9 @@ object NodeStore {
     private const val KEY_ACTIVE = "active"
     private const val PREFS_SUB = "pb_subs"
     private const val KEY_SUBS = "subs"
+
+    /** 一条订阅记录：名称 + 链接 */
+    data class Subscription(val name: String, val url: String)
 
     fun load(context: Context): MutableList<ProxyNode> {
         val sp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -46,33 +49,36 @@ object NodeStore {
 
     fun keyOf(n: ProxyNode) = "${n.name}|${n.address}:${n.port}|${n.subscription}"
 
-    // ============ 订阅链接管理 ============
-    fun loadSubs(context: Context): MutableList<String> {
+    // ============ 订阅管理（名称 + 链接） ============
+    fun loadSubs(context: Context): MutableList<Subscription> {
         val sp = context.getSharedPreferences(PREFS_SUB, Context.MODE_PRIVATE)
         val raw = sp.getString(KEY_SUBS, "[]") ?: "[]"
         val arr = JSONArray(raw)
-        val out = mutableListOf<String>()
-        for (i in 0 until arr.length()) out.add(arr.getString(i))
+        val out = mutableListOf<Subscription>()
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            out.add(Subscription(o.optString("name", ""), o.optString("url", "")))
+        }
         return out
     }
 
-    fun saveSubs(context: Context, subs: List<String>) {
+    fun saveSubs(context: Context, subs: List<Subscription>) {
         val arr = JSONArray()
-        subs.forEach { arr.put(it) }
+        subs.forEach { arr.put(JSONObject().apply { put("name", it.name); put("url", it.url) }) }
         context.getSharedPreferences(PREFS_SUB, Context.MODE_PRIVATE)
             .edit().putString(KEY_SUBS, arr.toString()).apply()
     }
 
-    fun addSub(context: Context, url: String) {
+    fun addSub(context: Context, name: String, url: String) {
         val list = loadSubs(context).toMutableList()
-        if (!list.contains(url)) list.add(url)
+        if (!list.any { it.url == url }) list.add(Subscription(name, url))
         saveSubs(context, list)
     }
 
     /** 删除某个订阅链接，以及所有归属于它的节点 */
     fun deleteSub(context: Context, url: String) {
         val subs = loadSubs(context).toMutableList()
-        subs.remove(url)
+        subs.removeAll { it.url == url }
         saveSubs(context, subs)
         val nodes = load(context).filter { it.subscription != url }
         save(context, nodes)
