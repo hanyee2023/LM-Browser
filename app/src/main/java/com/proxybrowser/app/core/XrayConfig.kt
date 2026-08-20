@@ -77,9 +77,6 @@ object XrayConfig {
                     put("headers", JSONObject().put("Host", node.wsHost.ifEmpty { node.address }))
                 })
             }
-            if (node.network == "grpc") {
-                put("grpcSettings", JSONObject().apply { put("serviceName", node.grpcServiceName) })
-            }
         }
 
         return JSONObject().apply {
